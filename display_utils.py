@@ -14,7 +14,7 @@ def display_feature(feature: Feature, layers: List[int], examples_per_layer=3):
         widgets.VBox([display_example(example) for example in feature.layers[layer][:examples_per_layer]])
         for layer in layers
     ]
-    accordion = widgets.Accordion(children=children)
+    accordion = widgets.Accordion(children=children, selected_index=0)
 
     for i in layers:
         accordion.set_title(i, f"Layer {i}")
