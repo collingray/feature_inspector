@@ -53,14 +53,26 @@ class InspectorWidget(widgets.VBox):
         super().__init__(children=children)
 
     def redraw_display(self):
-        self.display.close()
-        self.display = self.display_fn(
-            self.feature_controls.features,
-            self.layer_controls.layers,
-            self.general_controls.examples_per_layer.value
-        )
+        self.general_controls.render_button.disabled = True
+        self.general_controls.render_button.description = "Rendering..."
+        self.general_controls.render_button.button_style = "info"
 
-        self.refresh()
+        try:
+            self.display.close()
+            self.display = self.display_fn(
+                self.feature_controls.features,
+                self.layer_controls.layers,
+                self.general_controls.examples_per_layer.value
+            )
+
+            self.refresh()
+
+            self.general_controls.render_button.button_style = "success"
+        except:
+            self.general_controls.render_button.button_style = "danger"
+
+        self.general_controls.render_button.disabled = False
+        self.general_controls.render_button.description = "Render"
 
     def refresh(self):
         if self.general_controls.enable_graph_filters.value:

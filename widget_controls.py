@@ -159,7 +159,7 @@ class GeneralControls(widgets.VBox):
         self.render_button = widgets.Button(
             description='Render',
             disabled=False,
-            button_style='info',
+            button_style='success',
             tooltip='Render',
             icon='check'
         )
