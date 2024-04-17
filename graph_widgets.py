@@ -5,10 +5,10 @@ from IPython.display import display
 
 
 class HistogramRange(widgets.VBox):
-    def __init__(self, counts, total, bins=100):
-        self.counts = counts
-        self.log_freqs = [np.log10(count / total) for count in counts if count > 0]
-        self.num_dead = len(counts) - len(self.log_freqs)
+    def __init__(self, frequency_occurrences, possible_occurrences, bins=100):
+        self.counts = frequency_occurrences.sum(dim=0)
+        self.log_freqs = [np.log10(count / possible_occurrences) for count in self.counts if count > 0]
+        self.num_dead = len(self.counts) - len(self.log_freqs)
         self.num_selected = len(self.log_freqs)
 
         self.min_freq = min(self.log_freqs)

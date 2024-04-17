@@ -145,13 +145,21 @@ class GeneralControls(widgets.VBox):
             continuous_update=False,
             orientation='horizontal',
             readout=True,
-            readout_format='d'
+            readout_format='d',
+            style={"description_width": "initial", "width": "auto"}
+        )
+
+        self.enable_graph_filters = widgets.Checkbox(
+            value=False,
+            description='Enable graph filters',
+            disabled=False,
+            indent=False
         )
 
         self.render_button = widgets.Button(
             description='Render',
             disabled=False,
-            button_style='',  # 'success', 'info', 'warning', 'danger' or ''
+            button_style='info',
             tooltip='Render',
             icon='check'
         )
@@ -161,7 +169,9 @@ class GeneralControls(widgets.VBox):
 
         children = [
             label,
-            widgets.HBox(children=[self.examples_per_layer, self.render_button])
+            self.examples_per_layer,
+            self.enable_graph_filters,
+            self.render_button
         ]
 
         super().__init__(children=children)

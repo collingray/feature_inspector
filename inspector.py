@@ -10,11 +10,19 @@ from inspector_widget import InspectorWidget
 
 
 class Inspector:
-    def __init__(self, feature_examples: List[Feature], feature_occurrences: torch.Tensor, num_features, num_layers):
-        self.num_features = num_features
-        self.feature_occurrences = feature_occurrences
-        self.num_layers = num_layers
+    def __init__(
+            self,
+            feature_examples: List[Feature],
+            feature_occurrences: torch.Tensor,
+            possible_occurrences: int,
+            num_features: int,
+            num_layers: int
+    ):
         self.feature_examples = feature_examples
+        self.feature_occurrences = feature_occurrences
+        self.possible_occurrences = possible_occurrences
+        self.num_features = num_features
+        self.num_layers = num_layers
 
     @staticmethod
     def _tl_encoded_generator(
@@ -109,13 +117,15 @@ class Inspector:
         ]
         feature_occurrences = torch.zeros(num_layers, num_features, dtype=torch.int, device=device)
 
-        self = cls(features, feature_occurrences, num_features, num_layers)
+        self = cls(features, feature_occurrences, 0, num_features, num_layers)
 
         feature_mask = torch.ones(num_features, dtype=torch.bool, device=device)
 
         for _ in tqdm(range(num_seqs)):
             # [seq_length, num_layers, m_dim], [seq_length]
             out, token_strings = encoded_generator.__next__()
+
+            self.possible_occurrences += out.size(0) * num_layers
 
             activated_features = out > activation_threshold
             example_act_indices = torch.where(activated_features * feature_mask)
@@ -168,5 +178,7 @@ class Inspector:
         return InspectorWidget(
             self.num_features,
             self.num_layers,
+            self.feature_occurrences,
+            self.possible_occurrences,
             self.display_features
         )
