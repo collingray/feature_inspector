@@ -90,7 +90,7 @@ class LayersActivatedRange(widgets.VBox):
         self.output = widgets.Output()
 
         self.slider = widgets.IntRangeSlider(
-            value=[0, self.num_layers],
+            value=[0, self.num_layers+1],
             min=1,
             max=self.num_layers+1,
             step=1,

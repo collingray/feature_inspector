@@ -20,4 +20,5 @@ class Feature:
 
     def add_example(self, layer: int, example: FeatureExample):
         self.layers[layer].append(example)
+        self.layers[layer].sort(key=lambda x: x.activation, reverse=True)
         self.total_examples += 1

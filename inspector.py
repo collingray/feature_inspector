@@ -150,7 +150,7 @@ class Inspector:
 
                 self.feature_examples[feat].add_example(layer.item(), FeatureExample(out[seq, layer, feat].item(), context))
 
-        self.feature_occurrences = self.feature_occurrences.cpu().numpy()
+        self.feature_occurrences = self.feature_occurrences.cpu()
 
         return self
 
