@@ -56,6 +56,7 @@ class InspectorWidget(widgets.VBox):
         self.general_controls.render_button.disabled = True
         self.general_controls.render_button.description = "Rendering..."
         self.general_controls.render_button.button_style = "info"
+        self.general_controls.render_button.icon = "gear spin lg"
 
         try:
             self.display.close()
@@ -68,8 +69,10 @@ class InspectorWidget(widgets.VBox):
             self.refresh()
 
             self.general_controls.render_button.button_style = "success"
+            self.general_controls.render_button.icon = "check"
         except:
             self.general_controls.render_button.button_style = "danger"
+            self.general_controls.render_button.icon = "exclamation-triangle"
 
         self.general_controls.render_button.disabled = False
         self.general_controls.render_button.description = "Render"
