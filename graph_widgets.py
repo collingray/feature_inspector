@@ -6,6 +6,9 @@ import ipywidgets as widgets
 import torch
 from IPython.display import display
 
+SLIDER_WIDTH = "653px"
+SLIDER_MARGINS = "0px 0px 0px 72px"
+
 
 class FeatureFrequencyRange(widgets.VBox):
     def __init__(
@@ -30,6 +33,7 @@ class FeatureFrequencyRange(widgets.VBox):
 
         self.min_freq = min([freq for freq in self.log_freqs if freq != -10]).item()
         self.max_freq = max(self.log_freqs).item()
+        self.range = (self.max_freq, self.min_freq)
 
         # Features which are not selected by the current range, ignoring the filtered features
         self.unselected_features = None
@@ -51,8 +55,8 @@ class FeatureFrequencyRange(widgets.VBox):
             readout_format='.2f',
         )
 
-        self.slider.layout.width = f"660px"
-        self.slider.layout.margin = f"0px 0px 0px 120px"
+        self.slider.layout.width = SLIDER_WIDTH
+        self.slider.layout.margin = SLIDER_MARGINS
 
         self.feature_info = widgets.HBox([])
 
@@ -90,18 +94,16 @@ class FeatureFrequencyRange(widgets.VBox):
             )[0]
 
             fig = plt.figure(figsize=(8, 2))
-            _, edges, patches1 = plt.hist(self.log_freqs, bins=self.bins, range=(self.min_freq, self.max_freq),
-                                          color="lightgray")
-            _, _, patches2 = plt.hist(self.log_freqs * self.feature_mask, bins=self.bins,
-                                      range=(self.min_freq, self.max_freq), color="gray")
+            _, edges, p1 = plt.hist(self.log_freqs, bins=self.bins, range=self.range, color="lightgray")
+            _, _, p2 = plt.hist(self.log_freqs * self.feature_mask, bins=self.bins, range=self.range, color="gray")
 
-            for i in range(len(patches1)):
+            for i in range(len(p1)):
                 if (left <= edges[i]) & (edges[i + 1] <= right):
-                    patches1[i].set_facecolor('lightblue')
-                    patches2[i].set_facecolor('blue')
+                    p1[i].set_facecolor('lightblue')
+                    p2[i].set_facecolor('blue')
 
             fig.axes[0].tick_params(labelleft=True, labelright=True)
-            plt.title(f'Number of layers activated on by each feature')
+            plt.title('Log frequency density of features')
             plt.show()
 
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
@@ -153,8 +155,8 @@ class LayersActivatedRange(widgets.VBox):
             readout_format='d',
         )
 
-        self.slider.layout.width = f"653px"
-        self.slider.layout.margin = f"0px 0px 0px 80px"
+        self.slider.layout.width = SLIDER_WIDTH
+        self.slider.layout.margin = SLIDER_MARGINS
 
         self.feature_info = widgets.HBox([])
 
@@ -188,7 +190,7 @@ class LayersActivatedRange(widgets.VBox):
             left, right = change['new']
 
             self.unselected_features = torch.where(
-                (self.num_layers_activated < left) & (self.num_layers_activated >= right)
+                (self.num_layers_activated < left) | (self.num_layers_activated >= right)
             )[0]
 
             fig = plt.figure(figsize=(8, 2))
