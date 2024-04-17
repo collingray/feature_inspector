@@ -1,3 +1,4 @@
+import math
 from typing import List
 
 from ipywidgets import widgets
@@ -23,14 +24,32 @@ def display_feature(feature: Feature, layers: List[int], examples_per_layer=3):
 
 
 def display_features(features: List[Feature], layers: List[int], examples_per_layer=3):
-    children = [
-        display_feature(feature, layers, examples_per_layer)
-        for feature in features
-    ]
+    if len(features) > 20:
+        sections = min(10, len(features) // 10)
+        section_width = math.ceil(len(features) / sections)
 
-    tabs = widgets.Tab(children=children)
+        children = [
+            display_features(features[i:i + section_width], layers, examples_per_layer)
+            for i in range(0, len(features), section_width)
+        ]
 
-    for i, feature in enumerate(features):
-        tabs.set_title(i, f"Feature {feature.num}")
+        tabs = widgets.Tab(children=children)
+
+        for i in range(0, len(features), section_width):
+            tabs.set_title(i // section_width, f"{i}-{min(i + section_width, len(features))-1}")
+
+    else:
+        children = [
+            display_feature(feature, layers, examples_per_layer)
+            for feature in features
+        ]
+
+        tabs = widgets.Tab(children=children)
+
+        for i, feature in enumerate(features):
+            if len(features) <= 10:
+                tabs.set_title(i, f"Feature {feature.num}")
+            else:
+                tabs.set_title(i, str(feature.num))
 
     return tabs
