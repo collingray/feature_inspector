@@ -7,28 +7,35 @@ import torch
 from IPython.display import display
 
 
-class HistogramRange(widgets.VBox):
+class FeatureFrequencyRange(widgets.VBox):
     def __init__(
             self,
-            frequency_occurrences: torch.Tensor,
+            feature_occurrences: torch.Tensor,
             possible_occurrences: int,
-            filtered_features: Optional[torch.Tensor] = None,
             bins=100
     ):
         """
-        :param frequency_occurrences: A tensor of shape [num_layers, num_features], representing the number of times each
+        :param feature_occurrences: A tensor of shape [num_layers, num_features], representing the number of times each
         feature is activated on each layer.
         :param possible_occurrences: The maximum number of times a feature could be activated.
-        :param filtered_features: A tensor of feature indices to filter, or None to show all features.
         :param bins: The number of bins to use in the histogram.
         """
-        self.counts = frequency_occurrences.sum(dim=0)
-        self.log_freqs = [np.log10(count / possible_occurrences) for count in self.counts if count > 0]
-        self.num_dead = len(self.counts) - len(self.log_freqs)
-        self.num_selected = len(self.log_freqs)
+        self.num_activations = feature_occurrences.sum(dim=0)
+        self.num_features = self.num_activations.shape[0]
+        self.bins = bins
 
-        self.min_freq = min(self.log_freqs)
-        self.max_freq = max(self.log_freqs)
+        self.log_freqs = (self.num_activations / possible_occurrences).log10().nan_to_num(neginf=-10)
+        self.num_selected = torch.count_nonzero(self.num_activations).item()
+        self.num_dead = self.num_features - self.num_selected
+
+        self.min_freq = min([freq for freq in self.log_freqs if freq != -10]).item()
+        self.max_freq = max(self.log_freqs).item()
+
+        # Features which are not selected by the current range, ignoring the filtered features
+        self.unselected_features = None
+
+        # Mask of features that are not filtered
+        self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
 
         self.output = widgets.Output()
 
@@ -47,18 +54,10 @@ class HistogramRange(widgets.VBox):
         self.slider.layout.width = f"660px"
         self.slider.layout.margin = f"0px 0px 0px 120px"
 
-        self.bins = np.linspace(self.min_freq, self.max_freq, bins)
-        self.bin_width = self.bins[1] - self.bins[0]
+        self.feature_info = widgets.HBox([])
 
         self.update_plot({'new': self.slider.value})
-
         self.slider.observe(self.update_plot, 'value')
-
-        self.feature_info = widgets.HBox([
-            widgets.Label(f"Total: {len(self.counts)}"),
-            widgets.Label(f"Dead: {self.num_dead}"),
-            widgets.Label(f"Selected: {self.num_selected}")
-        ])
 
         layout = widgets.Layout(
             display='flex',
@@ -69,27 +68,48 @@ class HistogramRange(widgets.VBox):
 
         super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
 
+    def update_feature_info(self):
+        left, right = self.slider.value
+        self.num_selected = torch.count_nonzero((left <= self.log_freqs) & (self.log_freqs <= right)).item()
+        self.feature_info.children = [
+            widgets.Label(f"Total: {self.num_features}"),
+            widgets.Label(f"Dead: {self.num_dead}"),
+            widgets.Label(f"Selected: {self.num_selected}")
+        ]
+
     def update_plot(self, change):
+        self.update_feature_info()
+
         with (self.output):
             self.output.clear_output(wait=True)
-            # self.ax.clear()
-            selected_range = change['new']
-            left = selected_range[0]
-            right = selected_range[1]
-            plt.figure(figsize=(8, 2))
-            _, edges, patches = plt.hist(self.log_freqs, bins=self.bins, color="gray")
-            for i in range(len(patches)):
-                if left <= (edges[i] + edges[i + 1]) / 2 <= right:
-                    patches[i].set_facecolor('blue')
-            plt.title(f'Log frequencies of Features')
+
+            left, right = change['new']
+
+            self.unselected_features = torch.where(
+                (self.log_freqs < left) | (self.log_freqs > right)
+            )[0]
+
+            fig = plt.figure(figsize=(8, 2))
+            _, edges, patches1 = plt.hist(self.log_freqs, bins=self.bins, range=(self.min_freq, self.max_freq),
+                                          color="lightgray")
+            _, _, patches2 = plt.hist(self.log_freqs * self.feature_mask, bins=self.bins,
+                                      range=(self.min_freq, self.max_freq), color="gray")
+
+            for i in range(len(patches1)):
+                if (left <= edges[i]) & (edges[i + 1] <= right):
+                    patches1[i].set_facecolor('lightblue')
+                    patches2[i].set_facecolor('blue')
+
+            fig.axes[0].tick_params(labelleft=True, labelright=True)
+            plt.title(f'Number of layers activated on by each feature')
             plt.show()
 
-            self.num_selected = len([f for f in self.log_freqs if left <= f <= right])
-            self.feature_info.children = [
-                widgets.Label(f"Total: {len(self.log_freqs) + self.num_dead}"),
-                widgets.Label(f"Dead: {self.num_dead}"),
-                widgets.Label(f"Selected: {self.num_selected}")
-            ]
+    def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
+        self.feature_mask[:] = True
+        if filtered_features is not None:
+            self.feature_mask[filtered_features] = False
+
+        self.update_plot({'new': self.slider.value})
 
 
 class LayersActivatedRange(widgets.VBox):
@@ -114,7 +134,7 @@ class LayersActivatedRange(widgets.VBox):
         self.num_selected = self.bincount.sum().item()
 
         # Features which are not selected by the current range, ignoring the filtered features
-        self.unselected_features = torch.tensor([])
+        self.unselected_features = None
 
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
@@ -167,7 +187,7 @@ class LayersActivatedRange(widgets.VBox):
 
             left, right = change['new']
 
-            self.unselected_features[:] = torch.where(
+            self.unselected_features = torch.where(
                 (self.num_layers_activated < left) & (self.num_layers_activated >= right)
             )[0]
 

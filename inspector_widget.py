@@ -3,7 +3,7 @@ from typing import Callable
 import ipywidgets as widgets
 import torch
 
-from graph_widgets import HistogramRange, LayersActivatedRange
+from graph_widgets import FeatureFrequencyRange, LayersActivatedRange
 from widget_controls import FeatureControls, LayerControls, GeneralControls
 
 
@@ -23,7 +23,7 @@ class InspectorWidget(widgets.VBox):
         self.feature_controls = FeatureControls(num_features)
         self.layer_controls = LayerControls(num_layers)
         self.general_controls = GeneralControls()
-        self.frequency_histogram = HistogramRange(feature_occurrences, possible_occurrences)
+        self.frequency_histogram = FeatureFrequencyRange(feature_occurrences, possible_occurrences)
         self.layers_histogram = LayersActivatedRange(feature_occurrences)
         self.display = self.display_fn(
             self.feature_controls.features,
