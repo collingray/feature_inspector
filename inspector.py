@@ -108,7 +108,7 @@ class Inspector:
             num_features,
             device: str = "cuda",
             num_seqs: int = 4096,
-            max_examples: int = 512,
+            max_examples: int = 128,
             context_width: int = 10,
             num_layers: int = 12,
             activation_threshold: int = 1e-3
@@ -121,7 +121,7 @@ class Inspector:
 
         self = cls(features, feature_occurrences, 0, num_features, num_layers)
 
-        feature_mask = torch.ones(num_features, dtype=torch.bool, device=device)
+        feature_mask = torch.ones(num_layers, num_features, dtype=torch.bool, device=device)
 
         for _ in tqdm(range(num_seqs)):
             # [seq_length, num_layers, m_dim], [seq_length]
@@ -133,7 +133,7 @@ class Inspector:
             example_act_indices = torch.where(activated_features * feature_mask)
 
             self.feature_occurrences += activated_features.int().sum(dim=0)
-            feature_mask[:] = self.feature_occurrences.sum(dim=0) < max_examples
+            feature_mask[:] = self.feature_occurrences < max_examples
 
             prev_seq = -1
             context = ""
