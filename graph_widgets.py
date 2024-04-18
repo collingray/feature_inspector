@@ -35,8 +35,8 @@ class FeatureFrequencyRange(widgets.VBox):
         self.max_freq = max(self.log_freqs).item()
         self.range = (self.max_freq, self.min_freq)
 
-        # Features which are not selected by the current range, ignoring the filtered features
-        self.unselected_features = None
+        # Indices of features which are in the current range
+        self.selected_features = torch.where((self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq))[0]
 
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
@@ -89,8 +89,8 @@ class FeatureFrequencyRange(widgets.VBox):
 
             left, right = change['new']
 
-            self.unselected_features = torch.where(
-                (self.log_freqs < left) | (self.log_freqs > right)
+            self.selected_features = torch.where(
+                (self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq)
             )[0]
 
             fig = plt.figure(figsize=(8, 2))
@@ -106,10 +106,11 @@ class FeatureFrequencyRange(widgets.VBox):
             plt.title('Log frequency density of features')
             plt.show()
 
+    # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
+    # all features are included.
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
-        self.feature_mask[:] = True
-        if filtered_features is not None:
-            self.feature_mask[filtered_features] = False
+        self.feature_mask[:] = False
+        self.feature_mask[filtered_features] = True
 
         self.update_plot({'new': self.slider.value})
 
@@ -135,8 +136,8 @@ class LayersActivatedRange(widgets.VBox):
         self.bincount = self.bincount[1:]
         self.num_selected = self.bincount.sum().item()
 
-        # Features which are not selected by the current range, ignoring the filtered features
-        self.unselected_features = None
+        # Indices of features which are in the current range
+        self.selected_features = torch.where(self.num_layers_activated > 0)[0]
 
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
@@ -189,8 +190,8 @@ class LayersActivatedRange(widgets.VBox):
 
             left, right = change['new']
 
-            self.unselected_features = torch.where(
-                (self.num_layers_activated < left) | (self.num_layers_activated >= right)
+            self.selected_features = torch.where(
+                (left <= self.num_layers_activated) & (self.num_layers_activated < right)
             )[0]
 
             fig = plt.figure(figsize=(8, 2))
@@ -206,9 +207,10 @@ class LayersActivatedRange(widgets.VBox):
             plt.title(f'Number of layers activated on by each feature')
             plt.show()
 
+    # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
+    # all features are included.
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
-        self.feature_mask[:] = True
-        if filtered_features is not None:
-            self.feature_mask[filtered_features] = False
+        self.feature_mask[:] = False
+        self.feature_mask[filtered_features] = True
 
         self.update_plot({'new': self.slider.value})

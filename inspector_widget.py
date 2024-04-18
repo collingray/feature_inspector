@@ -3,8 +3,8 @@ from typing import Callable
 import ipywidgets as widgets
 import torch
 
-from graph_widgets import FeatureFrequencyRange, LayersActivatedRange
-from widget_controls import FeatureControls, LayerControls, GeneralControls
+from filter_widget import FilterWidget
+from control_widgets import FeatureControls, LayerControls, GeneralControls
 
 
 class InspectorWidget(widgets.VBox):
@@ -23,8 +23,7 @@ class InspectorWidget(widgets.VBox):
         self.feature_controls = FeatureControls(num_features)
         self.layer_controls = LayerControls(num_layers)
         self.general_controls = GeneralControls()
-        self.frequency_histogram = FeatureFrequencyRange(feature_occurrences, possible_occurrences)
-        self.layers_histogram = LayersActivatedRange(feature_occurrences)
+        self.filter_widget = FilterWidget(feature_occurrences, possible_occurrences)
         self.display = self.display_fn(
             self.feature_controls.features,
             self.layer_controls.layers,
@@ -32,13 +31,11 @@ class InspectorWidget(widgets.VBox):
         )
 
         self.feature_controls.layout.border = "1px solid black"
-        self.layer_controls.layout.border_left = "1px solid black"
-        self.layer_controls.layout.border_right = "1px solid black"
-        self.general_controls.layout.border = "1px solid black"
-
-        self.feature_controls.layout.padding = "10px"
-        self.layer_controls.layout.padding = "10px"
-        self.general_controls.layout.padding = "10px"
+        for widget in [self.layer_controls, self.general_controls, self.filter_widget]:
+            widget.layout.border_left = "1px solid black"
+            widget.layout.border_right = "1px solid black"
+            widget.layout.border_bottom = "1px solid black"
+            widget.layout.padding = "10px"
 
         children = [
             self.feature_controls,
@@ -49,6 +46,7 @@ class InspectorWidget(widgets.VBox):
 
         self.general_controls.render_button.on_click(lambda _: self.redraw_display())
         self.general_controls.enable_graph_filters.observe(lambda state: self.refresh())
+        self.filter_widget.filter_controls.apply_button.on_click(lambda _: self.apply_filters())
 
         super().__init__(children=children)
 
@@ -83,8 +81,7 @@ class InspectorWidget(widgets.VBox):
                 self.feature_controls,
                 self.layer_controls,
                 self.general_controls,
-                self.frequency_histogram,
-                self.layers_histogram,
+                self.filter_widget,
                 self.display,
             ]
         else:
@@ -94,3 +91,13 @@ class InspectorWidget(widgets.VBox):
                 self.general_controls,
                 self.display,
             ]
+
+    def apply_filters(self):
+        filtered_features = self.filter_widget.get_filtered_features()
+        self.feature_controls.features = (
+            list(filtered_features)) if filtered_features is not None else list(range(self.num_features))
+
+        if self.feature_controls.input_radio.value == "Input":
+            self.feature_controls.input_radio_changed({'new': 'Input'})
+        else:
+            self.feature_controls.input_radio.value = "Input"
