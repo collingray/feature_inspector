@@ -8,7 +8,7 @@ import torch
 from IPython.display import display, Image
 
 SLIDER_WIDTH = "653px"
-SLIDER_MARGINS = "0px 0px 0px 72px"
+SLIDER_MARGINS = "0px 0px 0px 98px"
 
 
 class FeatureFrequencyRange(widgets.VBox):
@@ -26,7 +26,6 @@ class FeatureFrequencyRange(widgets.VBox):
         """
         self.num_activations = feature_occurrences.sum(dim=0)
         self.num_features = self.num_activations.shape[0]
-        self.bins = bins
 
         self.log_freqs = (self.num_activations / possible_occurrences).log10().nan_to_num(neginf=-10)
         self.num_selected = torch.count_nonzero(self.num_activations).item()
@@ -34,7 +33,8 @@ class FeatureFrequencyRange(widgets.VBox):
 
         self.min_freq = min([freq for freq in self.log_freqs if freq != -10]).item()
         self.max_freq = max(self.log_freqs).item()
-        self.range = (self.min_freq, self.max_freq)
+        self.bin_width = (self.max_freq - self.min_freq) / bins
+        self.bins = list(np.arange(self.min_freq, self.max_freq + (2 * self.bin_width), self.bin_width))
 
         # Indices of features which are in the current range
         self.selected_features = torch.where((self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq))[0]
@@ -48,7 +48,7 @@ class FeatureFrequencyRange(widgets.VBox):
             value=[self.min_freq, self.max_freq],
             min=self.min_freq,
             max=self.max_freq,
-            step=(self.max_freq - self.min_freq) / bins,
+            step=self.bin_width,
             disabled=False,
             continuous_update=False,
             orientation='horizontal',
@@ -99,12 +99,12 @@ class FeatureFrequencyRange(widgets.VBox):
             )[0]
 
             self.axes.clear()
-            _, edges, p1 = self.axes.hist(self.log_freqs, bins=self.bins, range=self.range, color="lightgray")
-            _, _, p2 = self.axes.hist(self.log_freqs * self.feature_mask, bins=self.bins, range=self.range,
-                                      color="gray")
+            _, edges, p1 = self.axes.hist(self.log_freqs, bins=self.bins, color="lightgray")
+            _, _, p2 = self.axes.hist(self.log_freqs * self.feature_mask, bins=self.bins, color="gray")
 
             for i in range(len(p1)):
-                if (left <= edges[i]) & (edges[i + 1] <= right):
+                center = (edges[i] + edges[i + 1]) / 2
+                if (left < center) & (center < right):
                     p1[i].set_facecolor('lightblue')
                     p2[i].set_facecolor('blue')
 
@@ -176,7 +176,7 @@ class LayersActivatedRange(widgets.VBox):
         with self.output:
             self.fig, self.axes = plt.subplots(figsize=(8, 2))
             self.axes.tick_params(labelleft=True, labelright=True)
-            self.fig.suptitle('Log frequency density of features')
+            self.fig.suptitle('Number of layers activated by features')
             plt.show()
 
         self.slider.observe(self.update_plot, 'value')
