@@ -31,6 +31,8 @@ class InspectorWidget(widgets.VBox):
         )
 
         self.feature_controls.layout.border = "1px solid black"
+        self.feature_controls.layout.padding = "10px"
+
         for widget in [self.layer_controls, self.general_controls, self.filter_widget]:
             widget.layout.border_left = "1px solid black"
             widget.layout.border_right = "1px solid black"

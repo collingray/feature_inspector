@@ -18,6 +18,9 @@ class FilterWidget(widgets.VBox):
         self.feature_frequency = FeatureFrequencyRange(feature_occurrences, possible_occurrences)
         self.layers_activated = LayersActivatedRange(feature_occurrences)
 
+        self.feature_frequency.layout.padding = "10px"
+        self.layers_activated.layout.padding = "10px"
+
         self.filter_controls.enable_frequency_filter.observe(
             lambda _: (self.redraw_graphs(), self.set_frequency_filter()),
             'value'
@@ -64,9 +67,13 @@ class FilterWidget(widgets.VBox):
         enabled = self.filter_controls.enable_frequency_filter.value
         self.layers_activated.update_filtered_features(self.feature_frequency.selected_features if enabled else None)
 
+        self.filter_controls.apply_button.description = f"Apply {self.get_filtered_features().size(0)} features"
+
     def set_layers_filter(self):
         enabled = self.filter_controls.enable_layers_filter.value
         self.feature_frequency.update_filtered_features(self.layers_activated.selected_features if enabled else None)
+
+        self.filter_controls.apply_button.description = f"Apply {self.get_filtered_features().size(0)} features"
 
 
 class FilterControls(widgets.HBox):
