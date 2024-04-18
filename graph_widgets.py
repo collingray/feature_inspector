@@ -85,8 +85,6 @@ class FeatureFrequencyRange(widgets.VBox):
         self.update_feature_info()
 
         with (self.output):
-            self.output.clear_output(wait=True)
-
             left, right = change['new']
 
             self.selected_features = torch.where(
@@ -104,6 +102,8 @@ class FeatureFrequencyRange(widgets.VBox):
 
             fig.axes[0].tick_params(labelleft=True, labelright=True)
             plt.title('Log frequency density of features')
+
+            self.output.clear_output(wait=True)
             plt.show()
 
     def refresh(self):
@@ -189,8 +189,6 @@ class LayersActivatedRange(widgets.VBox):
         self.update_feature_info()
 
         with (self.output):
-            self.output.clear_output(wait=True)
-
             left, right = change['new']
 
             self.selected_features = torch.where(
@@ -208,6 +206,8 @@ class LayersActivatedRange(widgets.VBox):
 
             fig.axes[0].tick_params(labelleft=True, labelright=True)
             plt.title(f'Number of layers activated on by each feature')
+
+            self.output.clear_output(wait=True)
             plt.show()
 
     def refresh(self):
