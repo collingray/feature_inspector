@@ -138,7 +138,7 @@ class Inspector:
             prev_seq = -1
             context = ""
             for seq, layer, feat in zip(*example_act_indices):
-                if self.feature_examples[feat].total_examples > max_examples:
+                if len(self.feature_examples[feat].layers[layer]) > max_examples:
                     continue
 
                 if seq != prev_seq:  # if seq hasn't incremented, we don't need to recalculate the context
