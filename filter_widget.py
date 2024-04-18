@@ -18,15 +18,15 @@ class FilterWidget(widgets.VBox):
         self.feature_frequency = FeatureFrequencyRange(feature_occurrences, possible_occurrences)
         self.layers_activated = LayersActivatedRange(feature_occurrences)
 
-        children = [
-            self.feature_frequency,
-            self.layers_activated
-        ]
+        self.filter_controls.enable_frequency_filter.observe(lambda _: self.set_frequency_filter(), 'value')
+        self.filter_controls.enable_layers_filter.observe(lambda _: self.set_layers_filter(), 'value')
 
-        self.filter_controls.enable_frequency_filter.observe(self.set_frequency_filter, 'value')
-        self.filter_controls.enable_layers_filter.observe(self.set_layers_filter, 'value')
+        self.feature_frequency.slider.observe(lambda _: self.set_frequency_filter(), 'value')
+        self.layers_activated.slider.observe(lambda _: self.set_layers_filter(), 'value')
 
-        super().__init__(children=children)
+        super().__init__(children=[])
+
+        self.redraw_graphs()
 
     def get_filtered_features(self) -> Optional[torch.Tensor]:
         """
@@ -35,48 +35,54 @@ class FilterWidget(widgets.VBox):
         freq_filter = self.feature_frequency.selected_features if self.filter_controls.enable_frequency_filter else None
         layer_filter = self.layers_activated.selected_features if self.filter_controls.enable_layers_filter else None
 
-        return reduce(
-            np.intersect1d,
-            [filter for filter in [freq_filter, layer_filter] if filter is not None],
-            None
-        )
+        if (freq_filter is not None) and (layer_filter is not None):
+            return torch.tensor(np.intersect1d(freq_filter, layer_filter))
+        elif freq_filter is None:
+            return layer_filter
+        else:
+            return freq_filter
 
     def redraw_graphs(self):
         self.children = [
             graph for graph in [
-                self.feature_frequency if self.filter_controls.enable_frequency_filter else None,
-                self.layers_activated if self.filter_controls.enable_layers_filter else None
+                self.filter_controls,
+                self.feature_frequency if self.filter_controls.enable_frequency_filter.value else None,
+                self.layers_activated if self.filter_controls.enable_layers_filter.value else None
             ] if graph is not None
         ]
 
-    def set_frequency_filter(self, change):
-        enabled = change['new']
+    def set_frequency_filter(self):
+        enabled = self.filter_controls.enable_frequency_filter.value
         self.layers_activated.update_filtered_features(self.feature_frequency.selected_features if enabled else None)
-        self.redraw_graphs()
 
-    def set_layers_filter(self, change):
-        enabled = change['new']
-        self.feature_frequency.update_filtered_features(self.layers_activated.selected_features if enabled else None)
         self.redraw_graphs()
+        self.feature_frequency.refresh()
+
+    def set_layers_filter(self):
+        enabled = self.filter_controls.enable_layers_filter.value
+        self.feature_frequency.update_filtered_features(self.layers_activated.selected_features if enabled else None)
+
+        self.redraw_graphs()
+        self.layers_activated.refresh()
 
 
 class FilterControls(widgets.HBox):
     def __init__(self):
         self.enable_frequency_filter = widgets.Checkbox(
-            value=True,
+            value=False,
             description='Enable frequency filter',
             disabled=False,
         )
 
         self.enable_layers_filter = widgets.Checkbox(
-            value=True,
+            value=False,
             description='Enable layers filter',
             disabled=False,
         )
 
         self.apply_button = widgets.Button(
             description="Apply filtered features",
-            button_style="info"
+            button_style="info",
         )
 
         super().__init__(children=[self.enable_frequency_filter, self.enable_layers_filter, self.apply_button])

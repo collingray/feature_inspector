@@ -45,7 +45,7 @@ class InspectorWidget(widgets.VBox):
         ]
 
         self.general_controls.render_button.on_click(lambda _: self.redraw_display())
-        self.general_controls.enable_graph_filters.observe(lambda state: self.refresh())
+        self.general_controls.enable_graph_filters.observe(lambda _: self.refresh())
         self.filter_widget.filter_controls.apply_button.on_click(lambda _: self.apply_filters())
 
         super().__init__(children=children)
@@ -94,10 +94,8 @@ class InspectorWidget(widgets.VBox):
 
     def apply_filters(self):
         filtered_features = self.filter_widget.get_filtered_features()
-        self.feature_controls.features = (
-            list(filtered_features)) if filtered_features is not None else list(range(self.num_features))
+        self.feature_controls.features = filtered_features.tolist() \
+            if filtered_features is not None else list(range(self.num_features))
 
-        if self.feature_controls.input_radio.value == "Input":
-            self.feature_controls.input_radio_changed({'new': 'Input'})
-        else:
-            self.feature_controls.input_radio.value = "Input"
+        self.feature_controls.input_radio.value = "Input"
+        self.feature_controls.input_radio_changed({'new': 'Input'})  # In case it was already "Input"

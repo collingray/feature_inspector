@@ -33,7 +33,7 @@ class FeatureFrequencyRange(widgets.VBox):
 
         self.min_freq = min([freq for freq in self.log_freqs if freq != -10]).item()
         self.max_freq = max(self.log_freqs).item()
-        self.range = (self.max_freq, self.min_freq)
+        self.range = (self.min_freq, self.max_freq)
 
         # Indices of features which are in the current range
         self.selected_features = torch.where((self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq))[0]
@@ -90,7 +90,7 @@ class FeatureFrequencyRange(widgets.VBox):
             left, right = change['new']
 
             self.selected_features = torch.where(
-                (self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq)
+                (left <= self.log_freqs) & (self.log_freqs <= right)
             )[0]
 
             fig = plt.figure(figsize=(8, 2))
@@ -105,6 +105,9 @@ class FeatureFrequencyRange(widgets.VBox):
             fig.axes[0].tick_params(labelleft=True, labelright=True)
             plt.title('Log frequency density of features')
             plt.show()
+
+    def refresh(self):
+        self.update_plot({'new': self.slider.value})
 
     # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
     # all features are included.
@@ -206,6 +209,9 @@ class LayersActivatedRange(widgets.VBox):
             fig.axes[0].tick_params(labelleft=True, labelright=True)
             plt.title(f'Number of layers activated on by each feature')
             plt.show()
+
+    def refresh(self):
+        self.update_plot({'new': self.slider.value})
 
     # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
     # all features are included.
