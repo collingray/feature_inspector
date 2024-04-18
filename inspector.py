@@ -1,3 +1,5 @@
+import json
+import os
 from typing import List, Union, Iterator, Tuple, Callable
 
 import torch
@@ -148,7 +150,8 @@ class Inspector:
                     context_tokens[idx] = f"||{context_tokens[idx]}||"
                     context = "".join(context_tokens)
 
-                self.feature_examples[feat].add_example(layer.item(), FeatureExample(out[seq, layer, feat].item(), context))
+                self.feature_examples[feat].add_example(layer.item(),
+                                                        FeatureExample(out[seq, layer, feat].item(), context))
 
         self.feature_occurrences = self.feature_occurrences.cpu()
 
@@ -182,3 +185,52 @@ class Inspector:
             self.possible_occurrences,
             self.display_features
         )
+
+    def save(self, path, name):
+        """
+        Saves the inspector config to a json file, and saves all the features to individual json files
+        :param path: The directory to save the files to
+        :param name: The name (without extension) to use for the inspector config and directory of the features
+        """
+        with open(f"{path}/{name}.cfg", "w") as f:
+            cfg_dict = {
+                "feature_occurrences": self.feature_occurrences.tolist(),
+                "possible_occurrences": self.possible_occurrences,
+                "num_features": self.num_features,
+                "num_layers": self.num_layers,
+            }
+
+            json.dump(cfg_dict, f)
+
+        # ensure the directory exists
+        os.makedirs(f"{path}/{name}", exist_ok=True)
+
+        for feature in self.feature_examples:
+            with open(f"{path}/{name}/{feature.num}.json", "w") as f:
+                f.write(feature.to_json())
+
+    @classmethod
+    def load(cls, path, name):
+        """
+        Loads an inspector config and features from a directory
+        :param path: The directory containing the files
+        :param name: The name (without extension) of the inspector config and directory of the features
+        :return: An Inspector instance
+        """
+        with open(f"{path}/{name}.cfg", "r") as f:
+            cfg_dict = json.load(f)
+
+        feature_occurrences = torch.tensor(cfg_dict["feature_occurrences"])
+        possible_occurrences = cfg_dict["possible_occurrences"]
+        num_features = cfg_dict["num_features"]
+        num_layers = cfg_dict["num_layers"]
+
+        features_examples = []
+        for i in range(num_features):
+            try:
+                with open(f"{path}/{name}/{i}.json", "r") as f:
+                    features_examples.append(Feature.from_json(f.read()))
+            except FileNotFoundError:
+                features_examples.append(Feature.empty(i, num_layers))
+
+        return cls(features_examples, feature_occurrences, possible_occurrences, num_features, num_layers)

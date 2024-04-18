@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from typing import List
 
 
@@ -7,12 +8,32 @@ class FeatureExample:
     activation: float
     context: str
 
+    def to_json(self):
+        return json.dumps(self, default=lambda x: x.__dict__)
+
+    @classmethod
+    def from_json(cls, json_str):
+        return cls(**json.loads(json_str))
+
 
 @dataclass
 class Feature:
     num: int
     layers: List[List[FeatureExample]]
     total_examples: int = 0
+
+    def to_json(self):
+        return json.dumps(self, default=lambda x: x.__dict__)
+
+    @classmethod
+    def from_json(cls, json_str):
+        data = json.loads(json_str)
+        layers = [
+            [FeatureExample(**example) for example in layer]
+            for layer in data['layers']
+        ]
+
+        return cls(data['num'], layers, data['total_examples'])
 
     @classmethod
     def empty(cls, num: int, layers: int):
