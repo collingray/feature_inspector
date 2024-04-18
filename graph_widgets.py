@@ -28,8 +28,6 @@ class FeatureFrequencyRange(widgets.VBox):
         self.num_features = self.num_activations.shape[0]
 
         self.log_freqs = (self.num_activations / possible_occurrences).log10().nan_to_num(neginf=-10)
-        self.num_selected = torch.count_nonzero(self.num_activations).item()
-        self.num_dead = self.num_features - self.num_selected
 
         self.min_freq = min([freq for freq in self.log_freqs if freq != -10]).item()
         self.max_freq = max(self.log_freqs).item()
@@ -38,6 +36,9 @@ class FeatureFrequencyRange(widgets.VBox):
 
         # Indices of features which are in the current range
         self.selected_features = torch.where((self.min_freq <= self.log_freqs) & (self.log_freqs <= self.max_freq))[0]
+
+        # Number of features that are not activated at all
+        self.num_dead = self.num_features - len(self.selected_features)
 
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
@@ -80,24 +81,21 @@ class FeatureFrequencyRange(widgets.VBox):
         super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
 
     def update_feature_info(self):
-        left, right = self.slider.value
-        self.num_selected = torch.count_nonzero((left <= self.log_freqs) & (self.log_freqs <= right)).item()
         self.feature_info.children = [
             widgets.Label(f"Total: {self.num_features}"),
             widgets.Label(f"Dead: {self.num_dead}"),
-            widgets.Label(f"Selected: {self.num_selected}")
+            widgets.Label(f"Selected: {len(self.selected_features)}")
         ]
 
     def update_plot(self, change):
+        left, right = change['new']
+        self.selected_features = torch.where(
+            (left <= self.log_freqs) & (self.log_freqs <= right)
+        )[0]
+
         self.update_feature_info()
 
         with self.output:
-            left, right = change['new']
-
-            self.selected_features = torch.where(
-                (left <= self.log_freqs) & (self.log_freqs <= right)
-            )[0]
-
             self.axes.clear()
             _, edges, p1 = self.axes.hist(self.log_freqs, bins=self.bins, color="lightgray")
             _, _, p2 = self.axes.hist(self.log_freqs * self.feature_mask, bins=self.bins, color="gray")
@@ -142,13 +140,11 @@ class LayersActivatedRange(widgets.VBox):
         # The number of layers that each feature is activated on
         self.num_layers_activated = feature_occurrences.count_nonzero(dim=0)
 
-        self.bincount = self.num_layers_activated.bincount()
-        self.num_dead = self.bincount[0].item()
-        self.bincount = self.bincount[1:]
-        self.num_selected = self.bincount.sum().item()
-
         # Indices of features which are in the current range
         self.selected_features = torch.where(self.num_layers_activated > 0)[0]
+
+        # Number of features that are not activated on any layer
+        self.num_dead = self.num_features - len(self.selected_features)
 
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
@@ -191,24 +187,21 @@ class LayersActivatedRange(widgets.VBox):
         super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
 
     def update_feature_info(self):
-        left, right = self.slider.value
-        self.num_selected = self.bincount[left - 1:right - 1].sum().item()
         self.feature_info.children = [
             widgets.Label(f"Total: {self.num_features}"),
             widgets.Label(f"Dead: {self.num_dead}"),
-            widgets.Label(f"Selected: {self.num_selected}")
+            widgets.Label(f"Selected: {len(self.selected_features)}")
         ]
 
     def update_plot(self, change):
+        left, right = change['new']
+        self.selected_features = torch.where(
+            (left <= self.num_layers_activated) & (self.num_layers_activated < right)
+        )[0]
+
         self.update_feature_info()
 
         with self.output:
-            left, right = change['new']
-
-            self.selected_features = torch.where(
-                (left <= self.num_layers_activated) & (self.num_layers_activated < right)
-            )[0]
-
             self.axes.clear()
             _, _, p1 = self.axes.hist(self.num_layers_activated, bins=self.bins, color="lightgray")
             _, _, p2 = self.axes.hist(self.num_layers_activated * self.feature_mask, bins=self.bins, color="gray")
