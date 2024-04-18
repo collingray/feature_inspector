@@ -18,8 +18,14 @@ class FilterWidget(widgets.VBox):
         self.feature_frequency = FeatureFrequencyRange(feature_occurrences, possible_occurrences)
         self.layers_activated = LayersActivatedRange(feature_occurrences)
 
-        self.filter_controls.enable_frequency_filter.observe(lambda _: self.set_frequency_filter(), 'value')
-        self.filter_controls.enable_layers_filter.observe(lambda _: self.set_layers_filter(), 'value')
+        self.filter_controls.enable_frequency_filter.observe(
+            lambda _: (self.redraw_graphs(), self.set_frequency_filter()),
+            'value'
+        )
+        self.filter_controls.enable_layers_filter.observe(
+            lambda _: (self.redraw_graphs(), self.set_layers_filter()),
+            'value'
+        )
 
         self.feature_frequency.slider.observe(lambda _: self.set_frequency_filter(), 'value')
         self.layers_activated.slider.observe(lambda _: self.set_layers_filter(), 'value')
@@ -51,13 +57,14 @@ class FilterWidget(widgets.VBox):
             ] if graph is not None
         ]
 
+        self.feature_frequency.refresh()
+        self.layers_activated.refresh()
+
     def set_frequency_filter(self):
-        self.redraw_graphs()
         enabled = self.filter_controls.enable_frequency_filter.value
         self.layers_activated.update_filtered_features(self.feature_frequency.selected_features if enabled else None)
 
     def set_layers_filter(self):
-        self.redraw_graphs()
         enabled = self.filter_controls.enable_layers_filter.value
         self.feature_frequency.update_filtered_features(self.layers_activated.selected_features if enabled else None)
 

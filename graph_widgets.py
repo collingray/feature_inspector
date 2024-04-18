@@ -1,10 +1,11 @@
+from io import BytesIO
 from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import ipywidgets as widgets
 import torch
-from IPython.display import display
+from IPython.display import display, Image
 
 SLIDER_WIDTH = "653px"
 SLIDER_MARGINS = "0px 0px 0px 72px"
@@ -60,7 +61,13 @@ class FeatureFrequencyRange(widgets.VBox):
 
         self.feature_info = widgets.HBox([])
 
-        self.update_plot({'new': self.slider.value})
+        # Create the initial plot
+        with self.output:
+            self.fig, self.axes = plt.subplots(figsize=(8, 2))
+            self.axes.tick_params(labelleft=True, labelright=True)
+            self.fig.suptitle('Log frequency density of features')
+            plt.show()
+
         self.slider.observe(self.update_plot, 'value')
 
         layout = widgets.Layout(
@@ -84,27 +91,29 @@ class FeatureFrequencyRange(widgets.VBox):
     def update_plot(self, change):
         self.update_feature_info()
 
-        with (self.output):
+        with self.output:
             left, right = change['new']
 
             self.selected_features = torch.where(
                 (left <= self.log_freqs) & (self.log_freqs <= right)
             )[0]
 
-            fig = plt.figure(figsize=(8, 2))
-            _, edges, p1 = plt.hist(self.log_freqs, bins=self.bins, range=self.range, color="lightgray")
-            _, _, p2 = plt.hist(self.log_freqs * self.feature_mask, bins=self.bins, range=self.range, color="gray")
+            self.axes.clear()
+            _, edges, p1 = self.axes.hist(self.log_freqs, bins=self.bins, range=self.range, color="lightgray")
+            _, _, p2 = self.axes.hist(self.log_freqs * self.feature_mask, bins=self.bins, range=self.range,
+                                      color="gray")
 
             for i in range(len(p1)):
                 if (left <= edges[i]) & (edges[i + 1] <= right):
                     p1[i].set_facecolor('lightblue')
                     p2[i].set_facecolor('blue')
 
-            fig.axes[0].tick_params(labelleft=True, labelright=True)
-            plt.title('Log frequency density of features')
-
+            image_data = BytesIO()
+            self.fig.savefig(image_data, format='png')
+            image_data.seek(0)
+            image = Image(image_data.read())
             self.output.clear_output(wait=True)
-            plt.show()
+            display(image)
 
     def refresh(self):
         self.update_plot({'new': self.slider.value})
@@ -163,7 +172,13 @@ class LayersActivatedRange(widgets.VBox):
 
         self.feature_info = widgets.HBox([])
 
-        self.update_plot({'new': self.slider.value})
+        # Create the initial plot
+        with self.output:
+            self.fig, self.axes = plt.subplots(figsize=(8, 2))
+            self.axes.tick_params(labelleft=True, labelright=True)
+            self.fig.suptitle('Log frequency density of features')
+            plt.show()
+
         self.slider.observe(self.update_plot, 'value')
 
         layout = widgets.Layout(
@@ -187,27 +202,29 @@ class LayersActivatedRange(widgets.VBox):
     def update_plot(self, change):
         self.update_feature_info()
 
-        with (self.output):
+        with self.output:
             left, right = change['new']
 
             self.selected_features = torch.where(
                 (left <= self.num_layers_activated) & (self.num_layers_activated < right)
             )[0]
 
-            fig = plt.figure(figsize=(8, 2))
-            _, _, patches1 = plt.hist(self.num_layers_activated, bins=self.bins, color="lightgray")
-            _, _, patches2 = plt.hist(self.num_layers_activated * self.feature_mask, bins=self.bins, color="gray")
+            self.axes.clear()
+            _, _, p1 = self.axes.hist(self.num_layers_activated, bins=self.bins, color="lightgray")
+            _, _, p2 = self.axes.hist(self.num_layers_activated * self.feature_mask, bins=self.bins, color="gray")
 
-            for i in range(len(patches1)):
+            for i in range(len(p1)):
                 if left - 1 <= i < right - 1:
-                    patches1[i].set_facecolor('lightblue')
-                    patches2[i].set_facecolor('blue')
+                    p1[i].set_facecolor('lightblue')
+                    p2[i].set_facecolor('blue')
 
-            fig.axes[0].tick_params(labelleft=True, labelright=True)
-            plt.title(f'Number of layers activated on by each feature')
+            image_data = BytesIO()
+            self.fig.savefig(image_data, format='png')
+            image_data.seek(0)
+            image = Image(image_data.read())
 
             self.output.clear_output(wait=True)
-            plt.show()
+            display(image)
 
     def refresh(self):
         self.update_plot({'new': self.slider.value})
