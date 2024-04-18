@@ -52,18 +52,14 @@ class FilterWidget(widgets.VBox):
         ]
 
     def set_frequency_filter(self):
+        self.redraw_graphs()
         enabled = self.filter_controls.enable_frequency_filter.value
         self.layers_activated.update_filtered_features(self.feature_frequency.selected_features if enabled else None)
 
-        self.redraw_graphs()
-        self.feature_frequency.refresh()
-
     def set_layers_filter(self):
+        self.redraw_graphs()
         enabled = self.filter_controls.enable_layers_filter.value
         self.feature_frequency.update_filtered_features(self.layers_activated.selected_features if enabled else None)
-
-        self.redraw_graphs()
-        self.layers_activated.refresh()
 
 
 class FilterControls(widgets.HBox):

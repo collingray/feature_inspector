@@ -114,7 +114,6 @@ class FeatureFrequencyRange(widgets.VBox):
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
         self.feature_mask[:] = False
         self.feature_mask[filtered_features] = True
-
         self.update_plot({'new': self.slider.value})
 
 
@@ -218,5 +217,4 @@ class LayersActivatedRange(widgets.VBox):
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
         self.feature_mask[:] = False
         self.feature_mask[filtered_features] = True
-
         self.update_plot({'new': self.slider.value})
