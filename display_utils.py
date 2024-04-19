@@ -7,7 +7,15 @@ from features import Feature, FeatureExample
 
 
 def display_example(example: FeatureExample):
-    return widgets.Label(f"{example.activation} - {example.context}")
+    left = example.context[:example.tok_start]
+    token = example.context[example.tok_start:example.tok_end]
+    right = example.context[example.tok_end:]
+    gb_value = max(0, 255 - int(32 * example.activation))
+    color = f"rgb(255, {gb_value}, {gb_value})"
+    token = f"<span style='background-color: {color}'>{token}</span>"
+    activation = "{:.3f}".format(example.activation)
+
+    return widgets.HTML(f"{activation}:\t {left}{token}{right} ({activation})")
 
 
 def display_feature(feature: Feature, layers: List[int], examples_per_layer=3):
@@ -36,7 +44,10 @@ def display_features(features: List[Feature], layers: List[int], examples_per_la
         tabs = widgets.Tab(children=children)
 
         for i in range(0, len(features), section_width):
-            tabs.set_title(i // section_width, f"{i}-{min(i + section_width, len(features))-1}")
+            tabs.set_title(
+                i // section_width,
+                f"{features[i].num}-{features[min(i + section_width, len(features)) - 1].num}"
+            )
 
     else:
         children = [

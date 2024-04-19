@@ -7,6 +7,8 @@ from typing import List
 class FeatureExample:
     activation: float
     context: str
+    tok_start: int
+    tok_end: int
 
     def to_json(self):
         return json.dumps(self, default=lambda x: x.__dict__)

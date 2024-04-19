@@ -67,17 +67,17 @@ class Inspector:
             model: HookedTransformer,
             dataset,
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
-            num_features,
+            num_features: int,
+            num_layers: int,
             device: str = "cuda",
             dtype: torch.dtype = torch.bfloat16,
             act_site: str = "hook_mlp_out",
             num_seqs: int = 4096,
             max_seq_length: int = 1024,
             min_seq_length: int = 16,
-            max_examples: int = 512,
+            max_examples: int = 128,
             context_width: int = 10,
-            num_layers: int = 12,
-            activation_threshold: int = 1e-3
+            activation_threshold: int = 1e-2
     ):
         encoded_generator = cls._tl_encoded_generator(
             model,
@@ -105,13 +105,13 @@ class Inspector:
     def index_features(
             cls,
             encoded_generator: Iterator[Tuple[torch.Tensor, List[str]]],
-            num_features,
+            num_features: int,
+            num_layers: int,
             device: str = "cuda",
             num_seqs: int = 4096,
             max_examples: int = 128,
             context_width: int = 10,
-            num_layers: int = 12,
-            activation_threshold: int = 1e-3
+            activation_threshold: int = 1e-2
     ):
         features = [
             Feature.empty(i, num_layers)
@@ -137,6 +137,8 @@ class Inspector:
 
             prev_seq = -1
             context = ""
+            tok_start = -1
+            tok_end = -1
             for seq, layer, feat in zip(*example_act_indices):
                 if len(self.feature_examples[feat].layers[layer]) > max_examples:
                     continue
@@ -147,11 +149,16 @@ class Inspector:
                     end = seq + context_width + 1
                     idx = min(seq, context_width)
                     context_tokens = token_strings[start:end]
-                    context_tokens[idx] = f"||{context_tokens[idx]}||"
-                    context = "".join(context_tokens)
+                    left_context = "".join(context_tokens[:idx])
+                    right_context = "".join(context_tokens[idx + 1:])
+                    tok_start = len(left_context)
+                    tok_end = tok_start + len(context_tokens[idx])
+                    context = left_context + context_tokens[idx] + right_context
 
-                self.feature_examples[feat].add_example(layer.item(),
-                                                        FeatureExample(out[seq, layer, feat].item(), context))
+                self.feature_examples[feat].add_example(
+                    layer.item(),
+                    FeatureExample(out[seq, layer, feat].item(), context, tok_start, tok_end)
+                )
 
         self.feature_occurrences = self.feature_occurrences.cpu()
 
