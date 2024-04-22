@@ -93,11 +93,11 @@ class Inspector:
         return cls.index_features(
             encoded_generator,
             num_features,
+            num_layers,
             device,
             num_seqs,
             max_examples,
             context_width,
-            num_layers,
             activation_threshold
         )
 
