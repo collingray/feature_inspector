@@ -10,7 +10,7 @@ def display_example(example: FeatureExample):
     left = example.context[:example.tok_start]
     token = example.context[example.tok_start:example.tok_end]
     right = example.context[example.tok_end:]
-    gb_value = max(0, 255 - int(32 * example.activation))
+    gb_value = 255 - max(min(math.log10(example.activation+1) * 255, 255), 10)
     color = f"rgb(255, {gb_value}, {gb_value})"
     token = f"<span style='background-color: {color}'>{token}</span>"
     activation = "{:.3f}".format(example.activation)
