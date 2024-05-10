@@ -3,7 +3,7 @@ import os
 from typing import List, Union, Iterator, Tuple, Callable
 
 import torch
-from tqdm.autonotebook import tqdm
+from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
 from .features import Feature, FeatureExample

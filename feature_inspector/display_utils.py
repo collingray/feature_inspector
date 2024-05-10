@@ -2,20 +2,22 @@ import math
 from typing import List
 
 from ipywidgets import widgets
+import html
 
 from .features import Feature, FeatureExample
 
 
 def display_example(example: FeatureExample):
-    left = example.context[:example.tok_start]
-    token = example.context[example.tok_start:example.tok_end]
-    right = example.context[example.tok_end:]
+    context = example.context
+    left = html.escape(context[:example.tok_start])
+    token = html.escape(context[example.tok_start:example.tok_end])
+    right = html.escape(context[example.tok_end:])
     gb_value = 255 - max(min(math.log10(example.activation+1) * 255, 255), 10)
     color = f"rgb(255, {gb_value}, {gb_value})"
-    token = f"<span style='background-color: {color}'>{token}</span>"
+    token = f"<span style='background-color: {color}; border-bottom: 1px dotted #000;'>{token}</span>"
     activation = "{:.3f}".format(example.activation)
 
-    return widgets.HTML(f"{activation}:\t {left}{token}{right} ({activation})")
+    return widgets.HTML(f"{activation}:\t {left}{token}{right}")
 
 
 def display_feature(feature: Feature, layers: List[int], examples_per_layer=3):
