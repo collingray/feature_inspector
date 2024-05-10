@@ -1,3 +1,4 @@
 .idea
 scratchpad.ipynb
 __pycache__
+*.egg-info

@@ -1,0 +1,7 @@
+ipython
+ipywidgets
+matplotlib
+numpy
+torch
+tqdm
+transformer-lens
