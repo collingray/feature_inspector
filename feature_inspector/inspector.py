@@ -6,9 +6,9 @@ import torch
 from tqdm.autonotebook import tqdm
 from transformer_lens import HookedTransformer
 
-from features import Feature, FeatureExample
-from display_utils import display_features
-from inspector_widget import InspectorWidget
+from .features import Feature, FeatureExample
+from .display_utils import display_features
+from .inspector_widget import InspectorWidget
 
 
 class Inspector:

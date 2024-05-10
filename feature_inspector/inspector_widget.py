@@ -3,8 +3,8 @@ from typing import Callable
 import ipywidgets as widgets
 import torch
 
-from filter_widget import FilterWidget
-from control_widgets import FeatureControls, LayerControls, GeneralControls
+from .filter_widget import FilterWidget
+from .control_widgets import FeatureControls, LayerControls, GeneralControls
 
 
 class InspectorWidget(widgets.VBox):

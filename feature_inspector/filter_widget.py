@@ -3,9 +3,8 @@ from typing import Optional
 import ipywidgets as widgets
 import torch
 import numpy as np
-from functools import reduce
 
-from graph_widgets import FeatureFrequencyRange, LayersActivatedRange
+from .graph_widgets import FeatureFrequencyRange, LayersActivatedRange
 
 
 class FilterWidget(widgets.VBox):

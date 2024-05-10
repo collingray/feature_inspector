@@ -3,7 +3,7 @@ from typing import List
 
 from ipywidgets import widgets
 
-from features import Feature, FeatureExample
+from .features import Feature, FeatureExample
 
 
 def display_example(example: FeatureExample):
