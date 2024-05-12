@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import json
 from typing import List, Dict
 
+from overrides import overrides
 from sortedcontainers import SortedList
 
 
@@ -12,13 +13,6 @@ class FeatureExample:
     token: int
     token_str: str
 
-    def to_json(self):
-        return json.dumps(self, default=lambda x: x.__dict__)
-
-    @classmethod
-    def from_json(cls, json_str):
-        return cls(**json.loads(json_str))
-
 
 @dataclass
 class FeatureData:
@@ -27,8 +21,17 @@ class FeatureData:
     total_examples: int
     token_data: Dict[str, dict]
 
+    @overrides
+    def __dict__(self):
+        return {
+            'num': self.num,
+            'examples': [[example.__dict__ for example in layer] for layer in self.examples],
+            'total_examples': self.total_examples,
+            'token_counts': self.token_data
+        }
+
     def to_json(self):
-        return json.dumps(self, default=lambda x: x.__dict__)
+        return json.dumps(self.__dict__)
 
     @classmethod
     def from_json(cls, json_str):

@@ -21,7 +21,7 @@ class Inspector:
             num_features: int,
             num_layers: int
     ):
-        self.feature_examples = feature_data
+        self.feature_data = feature_data
         self.feature_occurrences = feature_occurrences
         self.possible_occurrences = possible_occurrences
         self.sequences = sequences
@@ -139,8 +139,8 @@ class Inspector:
             feature_mask[:] = self.feature_occurrences < max_examples
 
             for pos, layer, feat in zip(*example_act_indices):
-                if len(self.feature_examples[feat].examples[layer]) <= max_examples:
-                    self.feature_examples[feat].add_example(
+                if len(self.feature_data[feat].examples[layer]) <= max_examples:
+                    self.feature_data[feat].add_example(
                         layer,
                         FeatureExample(
                             out[pos, layer, feat].item(),
@@ -193,7 +193,7 @@ class Inspector:
         else:
             layers = list(layers)
 
-        features = [self.feature_examples[feature] for feature in features]
+        features = [self.feature_data[feature] for feature in features]
 
         return display_features(features, layers, self.sequences, examples_per_layer)
 
@@ -226,7 +226,7 @@ class Inspector:
         # ensure the directory exists
         os.makedirs(f"{path}/{name}", exist_ok=True)
 
-        for feature in self.feature_examples:
+        for feature in self.feature_data:
             with open(f"{path}/{name}/{feature.num}.json", "w") as f:
                 f.write(feature.to_json())
 
