@@ -115,7 +115,7 @@ def display_features(features: List[FeatureData], layers: List[int], seqs: List[
         tabs = widgets.Tab(children=children)
 
         for i, feature in enumerate(features):
-            if len(features) <= 10:
+            if len(features) <= 8:
                 tabs.set_title(i, f"Feature {feature.num}")
             else:
                 tabs.set_title(i, str(feature.num))

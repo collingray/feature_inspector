@@ -1,6 +1,5 @@
 import json
 import os
-from functools import lru_cache
 from typing import List, Union, Iterator, Tuple, Callable, Optional
 
 import torch
@@ -155,7 +154,6 @@ class Inspector:
 
         return self
 
-
     @staticmethod
     def _decode_token_breaks(tokens, decode_tokens):
         """
@@ -165,8 +163,19 @@ class Inspector:
         """
         token_breaks = []
         seq = ""
+        token_breaks = [0]
+        token_acc = []
 
-        return "", []  # todo
+        for token in tokens:
+            token_acc.append(token)
+            decoded = decode_tokens(token_acc)
+            if ord(decoded) != 65533:
+                seq += decoded
+                token_acc = []
+
+            token_breaks.append(len(seq))
+
+        return seq, token_breaks
 
     def display_features(
             self,
