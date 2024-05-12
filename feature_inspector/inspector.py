@@ -1,12 +1,13 @@
 import json
 import os
-from typing import List, Union, Iterator, Tuple, Callable
+from functools import lru_cache
+from typing import List, Union, Iterator, Tuple, Callable, Optional
 
 import torch
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
-from .features import Feature, FeatureExample
+from .features import FeatureData, FeatureExample
 from .display_utils import display_features
 from .inspector_widget import InspectorWidget
 
@@ -14,15 +15,17 @@ from .inspector_widget import InspectorWidget
 class Inspector:
     def __init__(
             self,
-            feature_examples: List[Feature],
+            feature_data: List[FeatureData],
             feature_occurrences: torch.Tensor,
             possible_occurrences: int,
+            sequences: List[Tuple[str, List[int]]],
             num_features: int,
             num_layers: int
     ):
-        self.feature_examples = feature_examples
+        self.feature_examples = feature_data
         self.feature_occurrences = feature_occurrences
         self.possible_occurrences = possible_occurrences
+        self.sequences = sequences
         self.num_features = num_features
         self.num_layers = num_layers
 
@@ -46,8 +49,6 @@ class Inspector:
                 if len(tokens) < min_seq_length:
                     continue
 
-                token_strings = model.tokenizer.batch_decode(tokens)
-
                 output, cache = model.run_with_cache(tokens, names_filter=act_names)
 
                 # [num_layers, batch_dim, seq_length, n_dim]
@@ -59,7 +60,7 @@ class Inspector:
                 # [seq_length, num_layers, m_dim]
                 out = encode_fn(mlp_outs)
 
-                yield out, token_strings
+                yield tokens, out
 
     @classmethod
     def tl_index_features(
@@ -73,10 +74,9 @@ class Inspector:
             dtype: torch.dtype = torch.bfloat16,
             act_site: str = "hook_mlp_out",
             num_seqs: int = 4096,
-            max_seq_length: int = 1024,
+            max_seq_length: Optional[int] = None,
             min_seq_length: int = 16,
-            max_examples: int = 128,
-            context_width: int = 10,
+            max_examples: int = 1024,
             activation_threshold: int = 1e-2
     ):
         encoded_generator = cls._tl_encoded_generator(
@@ -91,41 +91,45 @@ class Inspector:
         )
 
         return cls.index_features(
-            encoded_generator,
             num_features,
             num_layers,
+            encoded_generator,
+            model.tokenizer.decode,
             device,
             num_seqs,
             max_examples,
-            context_width,
             activation_threshold
         )
 
     @classmethod
     def index_features(
             cls,
-            encoded_generator: Iterator[Tuple[torch.Tensor, List[str]]],
             num_features: int,
             num_layers: int,
+            encoded_generator: Iterator[Tuple[List[int], torch.Tensor]],
+            decode_tokens: Callable[[List[int]], str],
             device: str = "cuda",
             num_seqs: int = 4096,
             max_examples: int = 128,
-            context_width: int = 10,
             activation_threshold: int = 1e-2
     ):
         features = [
-            Feature.empty(i, num_layers)
+            FeatureData.empty(i, num_layers)
             for i in range(num_features)
         ]
         feature_occurrences = torch.zeros(num_layers, num_features, dtype=torch.int, device=device)
 
-        self = cls(features, feature_occurrences, 0, num_features, num_layers)
+        self = cls(features, feature_occurrences, 0, [], num_features, num_layers)
 
         feature_mask = torch.ones(num_layers, num_features, dtype=torch.bool, device=device)
 
         for _ in tqdm(range(num_seqs)):
             # [seq_length, num_layers, m_dim], [seq_length]
-            out, token_strings = encoded_generator.__next__()
+            tokens, out = encoded_generator.__next__()
+
+            seq, token_breaks = self._decode_token_breaks(tokens, decode_tokens)
+
+            self.sequences.append((seq, token_breaks))
 
             self.possible_occurrences += out.size(0) * num_layers
 
@@ -135,34 +139,34 @@ class Inspector:
             self.feature_occurrences += activated_features.int().sum(dim=0)
             feature_mask[:] = self.feature_occurrences < max_examples
 
-            prev_seq = -1
-            context = ""
-            tok_start = -1
-            tok_end = -1
-            for seq, layer, feat in zip(*example_act_indices):
-                if len(self.feature_examples[feat].layers[layer]) > max_examples:
-                    continue
-
-                if seq != prev_seq:  # if seq hasn't incremented, we don't need to recalculate the context
-                    prev_seq = seq
-                    start = max(0, seq - context_width)
-                    end = seq + context_width + 1
-                    idx = min(seq, context_width)
-                    context_tokens = token_strings[start:end]
-                    left_context = "".join(context_tokens[:idx])
-                    right_context = "".join(context_tokens[idx + 1:])
-                    tok_start = len(left_context)
-                    tok_end = tok_start + len(context_tokens[idx])
-                    context = left_context + context_tokens[idx] + right_context
-
-                self.feature_examples[feat].add_example(
-                    layer.item(),
-                    FeatureExample(out[seq, layer, feat].item(), context, tok_start, tok_end)
-                )
+            for pos, layer, feat in zip(*example_act_indices):
+                if len(self.feature_examples[feat].examples[layer]) <= max_examples:
+                    self.feature_examples[feat].add_example(
+                        layer,
+                        FeatureExample(
+                            out[pos, layer, feat].item(),
+                            len(self.sequences) - 1,
+                            tokens[pos],
+                            decode_tokens([tokens[pos]])
+                        )
+                    )
 
         self.feature_occurrences = self.feature_occurrences.cpu()
 
         return self
+
+
+    @staticmethod
+    def _decode_token_breaks(tokens, decode_tokens):
+        """
+        Decodes the tokens and returns the sequence and the indices of the token breaks.
+
+        Needed as some tokens may not be a valid utf-8 string, so we can't just join them.
+        """
+        token_breaks = []
+        seq = ""
+
+        return "", []  # todo
 
     def display_features(
             self,
@@ -182,7 +186,7 @@ class Inspector:
 
         features = [self.feature_examples[feature] for feature in features]
 
-        return display_features(features, layers, examples_per_layer)
+        return display_features(features, layers, self.sequences, examples_per_layer)
 
     def display(self):
         return InspectorWidget(
@@ -203,6 +207,7 @@ class Inspector:
             cfg_dict = {
                 "feature_occurrences": self.feature_occurrences.tolist(),
                 "possible_occurrences": self.possible_occurrences,
+                "sequences": self.sequences,
                 "num_features": self.num_features,
                 "num_layers": self.num_layers,
             }
@@ -229,6 +234,7 @@ class Inspector:
 
         feature_occurrences = torch.tensor(cfg_dict["feature_occurrences"])
         possible_occurrences = cfg_dict["possible_occurrences"]
+        sequences = cfg_dict["sequences"]
         num_features = cfg_dict["num_features"]
         num_layers = cfg_dict["num_layers"]
 
@@ -236,8 +242,8 @@ class Inspector:
         for i in range(num_features):
             try:
                 with open(f"{path}/{name}/{i}.json", "r") as f:
-                    features_examples.append(Feature.from_json(f.read()))
+                    features_examples.append(FeatureData.from_json(f.read()))
             except FileNotFoundError:
-                features_examples.append(Feature.empty(i, num_layers))
+                features_examples.append(FeatureData.empty(i, num_layers))
 
-        return cls(features_examples, feature_occurrences, possible_occurrences, num_features, num_layers)
+        return cls(features_examples, feature_occurrences, possible_occurrences, sequences, num_features, num_layers)
