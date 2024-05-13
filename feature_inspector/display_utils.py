@@ -2,6 +2,7 @@ import math
 from typing import List, Tuple
 
 from ipywidgets import widgets
+import html
 
 from .features import FeatureData, FeatureExample
 
@@ -34,17 +35,27 @@ FEATURE_CSS = """
 
 
 def highlight_subseqs(seq: str, subseqs: List[Tuple[int, int, float]]):
-    offset = 0
+    subseqs.sort(key=lambda x: x[0])
 
-    for start, end, activation in subseqs:
+    out = ""
+
+    for i, (start, end, activation) in enumerate(subseqs):
         gb_value = 255 - max(min(math.log10(activation + 1) * 255, 255), 10)
         color = f"rgb(255, {gb_value}, {gb_value})"
         tooltip = f"<span class='feature-info'>{activation:.3f}</span>"
-        token = f"<span class='feature' style='background-color: {color}'>{seq[start + offset:end + offset]}{tooltip}</span>"
-        seq = seq[:start + offset] + token + seq[end + offset:]
-        offset += len(token) - (end - start)
+        token = f"<span class='feature' style='background-color: {color}'>{html.escape(seq[start:end])}{tooltip}</span>"
 
-    return seq
+        if i == 0:
+            out += html.escape(seq[:start])
+        else:
+            out += html.escape(seq[subseqs[i - 1][1]:start])
+
+        out += token
+
+        if i == len(subseqs) - 1:
+            out += html.escape(seq[end:])
+
+    return out
 
 
 def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, context_width=50):
@@ -64,12 +75,15 @@ def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, c
     out = []
     for example_group in chosen_examples:
         seq, token_breaks = seqs[example_group[0].seq_num]
-        token_subseqs = [(token_breaks[example.seq_num], token_breaks[example.seq_num + 1], example.activation) for
+        token_subseqs = [(token_breaks[example.pos], token_breaks[example.pos + 1], example.activation) for
                          example in example_group]
-        seq = highlight_subseqs(seq, token_subseqs)
+
         start = max(0, min(token_subseqs, key=lambda x: x[0])[0] - context_width)
         end = min(len(seq), max(token_subseqs, key=lambda x: x[1])[1] + context_width)
-        out.append(widgets.HTML(seq[start:end]))
+        seq = seq[:end]
+
+        seq = highlight_subseqs(seq, token_subseqs).replace("\n", "⏎")
+        out.append(widgets.HTML(seq[start:]))
 
     return widgets.VBox(out)
 

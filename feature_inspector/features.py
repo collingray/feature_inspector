@@ -9,6 +9,7 @@ from sortedcontainers import SortedList
 class FeatureExample:
     activation: float
     seq_num: int
+    pos: int
     token: int
     token_str: str
 

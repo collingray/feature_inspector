@@ -145,6 +145,7 @@ class Inspector:
                         FeatureExample(
                             out[pos, layer, feat].item(),
                             len(self.sequences) - 1,
+                            pos,
                             tokens[pos],
                             decode_tokens([tokens[pos]])
                         )
