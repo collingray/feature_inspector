@@ -1,12 +1,13 @@
 import json
 import os
+from multiprocessing import Pool
 from typing import List, Union, Iterator, Tuple, Callable, Optional
 
 import torch
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
-from .features import FeatureData, FeatureExample
+from .features import FeatureData
 from .display_utils import display_features
 from .inspector_widget import InspectorWidget
 
@@ -59,7 +60,7 @@ class Inspector:
                 # [seq_length, num_layers, m_dim]
                 out = encode_fn(mlp_outs)
 
-                yield tokens.tolist(), out
+                yield tokens, out
 
     @classmethod
     def tl_index_features(
@@ -105,7 +106,7 @@ class Inspector:
             cls,
             num_features: int,
             num_layers: int,
-            encoded_generator: Iterator[Tuple[List[int], torch.Tensor]],
+            encoded_generator: Iterator[Tuple[torch.Tensor, torch.Tensor]],
             decode_tokens: Callable[[List[int]], str],
             device: str = "cuda",
             num_seqs: int = 4096,
@@ -133,23 +134,35 @@ class Inspector:
             self.possible_occurrences += out.size(0) * num_layers
 
             activated_features = out > activation_threshold
-            example_act_indices = torch.where(activated_features * feature_mask)
+            # permute to have features as the first dim, ensuring they are contiguous
+            example_act_indices = torch.stack(torch.where((activated_features * feature_mask).permute(2, 0, 1)))
 
             self.feature_occurrences += activated_features.int().sum(dim=0)
             feature_mask[:] = self.feature_occurrences < max_examples
 
-            for pos, layer, feat in zip(*example_act_indices):
-                if len(self.feature_data[feat].examples[layer]) <= max_examples:
-                    self.feature_data[feat].add_example(
-                        layer,
-                        FeatureExample(
-                            out[pos, layer, feat].item(),
-                            len(self.sequences) - 1,
-                            pos,
-                            tokens[pos],
-                            decode_tokens([tokens[pos]])
-                        )
-                    )
+            feature_blocks = torch.cat((
+                torch.tensor([0]),
+                torch.where(example_act_indices[0][1:] != example_act_indices[0][:-1])[0] + 1,
+                torch.tensor([len(example_act_indices[0])])
+            ))
+
+            features = example_act_indices[0, feature_blocks[:-1]]
+
+            for i, feat in enumerate(features):
+                block_start = feature_blocks[i]
+                block_end = feature_blocks[i + 1]
+                feat = example_act_indices[0, block_start]
+
+                block = example_act_indices[1:, block_start:block_end]  # [2, block_size] - pos, layer
+                seq_layer_pos_token = torch.stack((  # [4, block_size] - seq, layer, pos, token
+                    torch.full((block.size(1),), len(self.sequences) - 1, dtype=torch.int),
+                    block[1],
+                    block[0],
+                    tokens[block[0]]
+                ))
+                activations = out[block[0], block[1], feat]
+
+                self.feature_data[feat].add_examples(seq_layer_pos_token, activations)
 
         self.feature_occurrences = self.feature_occurrences.cpu()
 
@@ -227,8 +240,7 @@ class Inspector:
         os.makedirs(f"{path}/{name}", exist_ok=True)
 
         for feature in self.feature_data:
-            with open(f"{path}/{name}/{feature.num}.json", "w") as f:
-                f.write(feature.to_json())
+            feature.save(f"{path}/{name}")
 
     @classmethod
     def load(cls, path, name):
@@ -247,12 +259,11 @@ class Inspector:
         num_features = cfg_dict["num_features"]
         num_layers = cfg_dict["num_layers"]
 
-        features_examples = []
+        feature_data = []
         for i in range(num_features):
             try:
-                with open(f"{path}/{name}/{i}.json", "r") as f:
-                    features_examples.append(FeatureData.from_json(f.read()))
+                feature_data.append(FeatureData.load(f"{path}/{name}", str(i)))
             except FileNotFoundError:
-                features_examples.append(FeatureData.empty(i, num_layers))
+                feature_data.append(FeatureData.empty(i, num_layers))
 
-        return cls(features_examples, feature_occurrences, possible_occurrences, sequences, num_features, num_layers)
+        return cls(feature_data, feature_occurrences, possible_occurrences, sequences, num_features, num_layers)

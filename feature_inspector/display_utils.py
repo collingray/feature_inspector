@@ -1,12 +1,17 @@
 import math
 from typing import List, Tuple
 
+import torch
 from ipywidgets import widgets
 import html
 
-from .features import FeatureData, FeatureExample
+from .features import FeatureData, ExamplesData
 
 FEATURE_CSS = """
+p {
+    line-height: 1.3;
+}
+
 .feature {
   position: relative;
   border-bottom: 1px dotted black;
@@ -58,25 +63,28 @@ def highlight_subseqs(seq: str, subseqs: List[Tuple[int, int, float]]):
     return out
 
 
-def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, context_width=50):
-    chosen_examples: List[List[FeatureExample]] = []
+def display_examples(examples, seqs, examples_per_layer, context_width=50):
+    seq_layer_pos_token = examples[0]
+    activations = examples[1]
 
-    for example in examples:
-        if len(chosen_examples) >= examples_per_layer:
+    chosen_seqs = set()
+    for i in range(len(seq_layer_pos_token)):
+        chosen_seqs.add(seq_layer_pos_token[i][0].item())
+        if len(chosen_seqs) >= examples_per_layer:
             break
-
-        for i in range(len(chosen_examples)):
-            if chosen_examples[i][0].seq_num == example.seq_num:
-                chosen_examples[i].append(example)
-                break
-        else:
-            chosen_examples.append([example])
+    chosen_seqs = torch.tensor(list(chosen_seqs))
+    chosen_mask = torch.isin(seq_layer_pos_token[:, 0], chosen_seqs)
+    chosen_examples = seq_layer_pos_token[chosen_mask]
+    chosen_example_activations = activations[chosen_mask]
 
     out = []
-    for example_group in chosen_examples:
-        seq, token_breaks = seqs[example_group[0].seq_num]
-        token_subseqs = [(token_breaks[example.pos], token_breaks[example.pos + 1], example.activation) for
-                         example in example_group]
+    for seq_num in chosen_seqs:
+        seq, token_breaks = seqs[seq_num]
+        token_subseqs = []
+        for i in torch.where(chosen_examples[:, 0] == seq_num)[0]:
+            seq_num, _, pos, _ = chosen_examples[i]
+            act = chosen_example_activations[i]
+            token_subseqs.append((token_breaks[pos], token_breaks[pos + 1], act))
 
         start = max(0, min(token_subseqs, key=lambda x: x[0])[0] - context_width)
         end = min(len(seq), max(token_subseqs, key=lambda x: x[1])[1] + context_width)
@@ -84,13 +92,14 @@ def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, c
 
         seq = highlight_subseqs(seq, token_subseqs).replace("\n", "⏎")
         out.append(widgets.HTML(seq[start:]))
+        out.append(widgets.HTML(f"<hr>"))
 
     return widgets.VBox(out)
 
 
 def display_feature(feature: FeatureData, layers: List[int], seqs: List[Tuple[str, List[int]]], examples_per_layer):
     children = [
-        display_examples(list(feature.examples[layer]), seqs, examples_per_layer)
+        display_examples(feature.examples.get_layer(layer), seqs, examples_per_layer)
         for layer in layers
     ]
     accordion = widgets.Accordion(children=children, selected_index=0)
