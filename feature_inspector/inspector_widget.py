@@ -1,3 +1,4 @@
+import traceback
 from typing import Callable
 
 import ipywidgets as widgets
@@ -57,6 +58,7 @@ class InspectorWidget(widgets.VBox):
         self.general_controls.render_button.description = "Rendering..."
         self.general_controls.render_button.button_style = "info"
         self.general_controls.render_button.icon = "gear spin lg"
+        self.general_controls.error_message.layout.visibility = "hidden"
 
         try:
             self.display.close()
@@ -70,9 +72,12 @@ class InspectorWidget(widgets.VBox):
 
             self.general_controls.render_button.button_style = "success"
             self.general_controls.render_button.icon = "check"
-        except:
+        except Exception as e:
             self.general_controls.render_button.button_style = "danger"
             self.general_controls.render_button.icon = "exclamation-triangle"
+            error_trace = traceback.format_exc().replace('\n', '<br>')
+            self.general_controls.error_message.value = f"Error: {error_trace}"
+            self.general_controls.error_message.layout.visibility = "visible"
 
         self.general_controls.render_button.disabled = False
         self.general_controls.render_button.description = "Render"

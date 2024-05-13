@@ -47,7 +47,7 @@ def highlight_subseqs(seq: str, subseqs: List[Tuple[int, int, float]]):
     return seq
 
 
-def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, context_width=10):
+def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, context_width=50):
     chosen_examples: List[List[FeatureExample]] = []
 
     for example in examples:
@@ -63,7 +63,7 @@ def display_examples(examples: List[FeatureExample], seqs, examples_per_layer, c
 
     out = []
     for example_group in chosen_examples:
-        seq, token_breaks = seqs[example_group[0].seq_num][0]
+        seq, token_breaks = seqs[example_group[0].seq_num]
         token_subseqs = [(token_breaks[example.seq_num], token_breaks[example.seq_num + 1], example.activation) for
                          example in example_group]
         seq = highlight_subseqs(seq, token_subseqs)

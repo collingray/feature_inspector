@@ -59,7 +59,7 @@ class Inspector:
                 # [seq_length, num_layers, m_dim]
                 out = encode_fn(mlp_outs)
 
-                yield tokens, out
+                yield tokens.tolist(), out
 
     @classmethod
     def tl_index_features(
@@ -161,7 +161,6 @@ class Inspector:
 
         Needed as some tokens may not be a valid utf-8 string, so we can't just join them.
         """
-        token_breaks = []
         seq = ""
         token_breaks = [0]
         token_acc = []
@@ -169,7 +168,7 @@ class Inspector:
         for token in tokens:
             token_acc.append(token)
             decoded = decode_tokens(token_acc)
-            if ord(decoded) != 65533:
+            if '�' not in decoded:
                 seq += decoded
                 token_acc = []
 

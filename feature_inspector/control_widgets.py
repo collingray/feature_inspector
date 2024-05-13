@@ -164,6 +164,9 @@ class GeneralControls(widgets.VBox):
             icon='check'
         )
 
+        self.error_message = widgets.HTML(value="")
+        self.error_message.layout.visibility = "hidden"
+
         label = widgets.Label("General")
         label.style.font_size = "16px"
 
@@ -171,7 +174,8 @@ class GeneralControls(widgets.VBox):
             label,
             self.examples_per_layer,
             self.enable_graph_filters,
-            self.render_button
+            self.render_button,
+            self.error_message
         ]
 
         super().__init__(children=children)
