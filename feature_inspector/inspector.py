@@ -44,7 +44,8 @@ class Inspector:
             for i in range(len(dataset)):
                 act_names = [f"blocks.{i}.{act_site}" for i in range(num_layers)]
 
-                tokens = model.tokenizer(dataset[i], max_length=max_seq_length, return_tensors="pt")["input_ids"][0]
+                tokens = model.tokenizer(dataset[i], max_length=max_seq_length, return_tensors="pt")["input_ids"][0].to(
+                    'cuda')
 
                 if len(tokens) < min_seq_length:
                     continue
@@ -96,6 +97,7 @@ class Inspector:
             encoded_generator,
             model.tokenizer.decode,
             device,
+            dtype,
             num_seqs,
             max_examples,
             activation_threshold
@@ -109,12 +111,13 @@ class Inspector:
             encoded_generator: Iterator[Tuple[torch.Tensor, torch.Tensor]],
             decode_tokens: Callable[[List[int]], str],
             device: str = "cuda",
+            dtype=torch.bfloat16,
             num_seqs: int = 4096,
             max_examples: int = 128,
             activation_threshold: int = 1e-2
     ):
         features = [
-            FeatureData.empty(i, num_layers)
+            FeatureData.empty(i, device=device, dtype=dtype)
             for i in range(num_features)
         ]
         feature_occurrences = torch.zeros(num_layers, num_features, dtype=torch.int, device=device)
@@ -140,10 +143,13 @@ class Inspector:
             self.feature_occurrences += activated_features.int().sum(dim=0)
             feature_mask[:] = self.feature_occurrences < max_examples
 
+            if example_act_indices.size(1) == 0:
+                continue
+
             feature_blocks = torch.cat((
-                torch.tensor([0]),
+                torch.tensor([0], device=device),
                 torch.where(example_act_indices[0][1:] != example_act_indices[0][:-1])[0] + 1,
-                torch.tensor([len(example_act_indices[0])])
+                torch.tensor([len(example_act_indices[0])], device=device)
             ))
 
             features = example_act_indices[0, feature_blocks[:-1]]
@@ -154,17 +160,19 @@ class Inspector:
                 feat = example_act_indices[0, block_start]
 
                 block = example_act_indices[1:, block_start:block_end]  # [2, block_size] - pos, layer
-                seq_layer_pos_token = torch.stack((  # [4, block_size] - seq, layer, pos, token
-                    torch.full((block.size(1),), len(self.sequences) - 1, dtype=torch.int),
+                seq_layer_pos_token = torch.stack((  # [block_size, 4] - seq, layer, pos, token
+                    torch.full((block.size(1),), len(self.sequences) - 1, dtype=torch.int, device=device),
                     block[1],
                     block[0],
                     tokens[block[0]]
-                ))
+                )).swapdims(0, 1)
                 activations = out[block[0], block[1], feat]
 
                 self.feature_data[feat].add_examples(seq_layer_pos_token, activations)
 
-        self.feature_occurrences = self.feature_occurrences.cpu()
+        for i in range(len(self.feature_data)):
+            self.feature_data[i].record_token_data(decode_tokens)
+            self.feature_data[i].examples.sort()
 
         return self
 
@@ -243,7 +251,7 @@ class Inspector:
             feature.save(f"{path}/{name}")
 
     @classmethod
-    def load(cls, path, name):
+    def load(cls, path, name, device, dtype):
         """
         Loads an inspector config and features from a directory
         :param path: The directory containing the files
@@ -262,8 +270,8 @@ class Inspector:
         feature_data = []
         for i in range(num_features):
             try:
-                feature_data.append(FeatureData.load(f"{path}/{name}", str(i)))
+                feature_data.append(FeatureData.load(f"{path}/{name}", str(i), device=device, dtype=dtype))
             except FileNotFoundError:
-                feature_data.append(FeatureData.empty(i, num_layers))
+                feature_data.append(FeatureData.empty(i, device=device, dtype=dtype))
 
         return cls(feature_data, feature_occurrences, possible_occurrences, sequences, num_features, num_layers)

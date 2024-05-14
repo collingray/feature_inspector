@@ -1,3 +1,4 @@
+from abc import ABC, abstractproperty, abstractmethod, ABCMeta
 from io import BytesIO
 from typing import Optional
 
@@ -11,7 +12,60 @@ SLIDER_WIDTH = "653px"
 SLIDER_MARGINS = "0px 0px 0px 98px"
 
 
-class FeatureFrequencyRange(widgets.VBox):
+class GraphWidgetMeta(ABCMeta, type(widgets.VBox)):
+    pass
+
+
+class GraphWidget(ABC, widgets.VBox, metaclass=GraphWidgetMeta):
+    def __init__(self, title: str, slider):
+        self.output = widgets.Output()
+
+        # Create the initial plot
+        with self.output:
+            self.fig, self.axes = plt.subplots(figsize=(8, 2))
+            self.axes.tick_params(labelleft=True, labelright=True)
+            self.fig.suptitle(title)
+            plt.show()
+
+        self.slider = slider
+        self.slider.layout.width = SLIDER_WIDTH
+        self.slider.layout.margin = SLIDER_MARGINS
+        self.slider.observe(self.update_plot, 'value')
+
+        self.feature_info = widgets.HBox([])
+
+        layout = widgets.Layout(
+            display='flex',
+            flex_flow='column',
+            align_items='center',
+            width='100%'
+        )
+
+        super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
+
+    def update_feature_info(self):
+        self.feature_info.children = [
+            widgets.Label(f"Total: {self.num_features}"),
+            widgets.Label(f"Dead: {self.num_dead}"),
+            widgets.Label(f"Selected: {len(self.selected_features)}")
+        ]
+
+    def refresh(self):
+        self.update_plot({'new': self.slider.value})
+
+    # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
+    # all features are included.
+    def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
+        self.feature_mask[:] = False
+        self.feature_mask[filtered_features] = True
+        self.update_plot({'new': self.slider.value})
+
+    @abstractmethod
+    def update_plot(self, change):
+        pass
+
+
+class FeatureFrequencyRange(GraphWidget):
     def __init__(
             self,
             feature_occurrences: torch.Tensor,
@@ -43,9 +97,7 @@ class FeatureFrequencyRange(widgets.VBox):
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
 
-        self.output = widgets.Output()
-
-        self.slider = widgets.FloatRangeSlider(
+        slider = widgets.FloatRangeSlider(
             value=[self.min_freq, self.max_freq],
             min=self.min_freq,
             max=self.max_freq,
@@ -57,35 +109,7 @@ class FeatureFrequencyRange(widgets.VBox):
             readout_format='.2f',
         )
 
-        self.slider.layout.width = SLIDER_WIDTH
-        self.slider.layout.margin = SLIDER_MARGINS
-
-        self.feature_info = widgets.HBox([])
-
-        # Create the initial plot
-        with self.output:
-            self.fig, self.axes = plt.subplots(figsize=(8, 2))
-            self.axes.tick_params(labelleft=True, labelright=True)
-            self.fig.suptitle('Log frequency density of features')
-            plt.show()
-
-        self.slider.observe(self.update_plot, 'value')
-
-        layout = widgets.Layout(
-            display='flex',
-            flex_flow='column',
-            align_items='center',
-            width='100%'
-        )
-
-        super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
-
-    def update_feature_info(self):
-        self.feature_info.children = [
-            widgets.Label(f"Total: {self.num_features}"),
-            widgets.Label(f"Dead: {self.num_dead}"),
-            widgets.Label(f"Selected: {len(self.selected_features)}")
-        ]
+        super().__init__('Log frequency density of features', slider)
 
     def update_plot(self, change):
         left, right = change['new']
@@ -113,18 +137,8 @@ class FeatureFrequencyRange(widgets.VBox):
             self.output.clear_output(wait=True)
             display(image)
 
-    def refresh(self):
-        self.update_plot({'new': self.slider.value})
 
-    # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
-    # all features are included.
-    def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
-        self.feature_mask[:] = False
-        self.feature_mask[filtered_features] = True
-        self.update_plot({'new': self.slider.value})
-
-
-class LayersActivatedRange(widgets.VBox):
+class LayersActivatedRange(GraphWidget):
     def __init__(
             self,
             feature_occurrences: torch.Tensor,
@@ -149,9 +163,7 @@ class LayersActivatedRange(widgets.VBox):
         # Mask of features that are not filtered
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
 
-        self.output = widgets.Output()
-
-        self.slider = widgets.IntRangeSlider(
+        slider = widgets.IntRangeSlider(
             value=[0, self.num_layers + 1],
             min=1,
             max=self.num_layers + 1,
@@ -163,35 +175,7 @@ class LayersActivatedRange(widgets.VBox):
             readout_format='d',
         )
 
-        self.slider.layout.width = SLIDER_WIDTH
-        self.slider.layout.margin = SLIDER_MARGINS
-
-        self.feature_info = widgets.HBox([])
-
-        # Create the initial plot
-        with self.output:
-            self.fig, self.axes = plt.subplots(figsize=(8, 2))
-            self.axes.tick_params(labelleft=True, labelright=True)
-            self.fig.suptitle('Number of layers activated by features')
-            plt.show()
-
-        self.slider.observe(self.update_plot, 'value')
-
-        layout = widgets.Layout(
-            display='flex',
-            flex_flow='column',
-            align_items='center',
-            width='100%'
-        )
-
-        super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
-
-    def update_feature_info(self):
-        self.feature_info.children = [
-            widgets.Label(f"Total: {self.num_features}"),
-            widgets.Label(f"Dead: {self.num_dead}"),
-            widgets.Label(f"Selected: {len(self.selected_features)}")
-        ]
+        super().__init__('Number of layers activated by features', slider)
 
     def update_plot(self, change):
         left, right = change['new']
@@ -218,13 +202,3 @@ class LayersActivatedRange(widgets.VBox):
 
             self.output.clear_output(wait=True)
             display(image)
-
-    def refresh(self):
-        self.update_plot({'new': self.slider.value})
-
-    # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
-    # all features are included.
-    def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
-        self.feature_mask[:] = False
-        self.feature_mask[filtered_features] = True
-        self.update_plot({'new': self.slider.value})
