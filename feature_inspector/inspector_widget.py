@@ -14,6 +14,7 @@ class InspectorWidget(widgets.VBox):
             num_features: int,
             num_layers: int,
             feature_occurrences: torch.Tensor,
+            average_activations: torch.Tensor,
             possible_occurrences: int,
             display_fn: Callable[[list, list, int], widgets.Widget]
     ):
@@ -24,7 +25,7 @@ class InspectorWidget(widgets.VBox):
         self.feature_controls = FeatureControls(num_features)
         self.layer_controls = LayerControls(num_layers)
         self.general_controls = GeneralControls()
-        self.filter_widget = FilterWidget(feature_occurrences, possible_occurrences)
+        self.filter_widget = FilterWidget(feature_occurrences, average_activations, possible_occurrences)
         self.display = self.display_fn(
             self.feature_controls.features,
             self.layer_controls.layers,

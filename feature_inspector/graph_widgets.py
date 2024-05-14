@@ -65,7 +65,7 @@ class GraphWidget(ABC, widgets.VBox, metaclass=GraphWidgetMeta):
         pass
 
 
-class FeatureFrequencyRange(GraphWidget):
+class FeatureFrequencyGraph(GraphWidget):
     def __init__(
             self,
             feature_occurrences: torch.Tensor,
@@ -138,7 +138,76 @@ class FeatureFrequencyRange(GraphWidget):
             display(image)
 
 
-class LayersActivatedRange(GraphWidget):
+class AverageActivationGraph(GraphWidget):
+    def __init__(
+            self,
+            average_activations: torch.Tensor,
+            bins=100
+    ):
+        """
+        :param average_activations: A tensor of shape [num_features], representing the average activation of each feature.
+        :param bins: The number of bins to use in the histogram.
+        """
+        self.num_features = average_activations.shape[0]
+
+        self.average_activations = average_activations
+
+        self.min_act = 0
+        self.max_act = average_activations.max().item()
+        self.bin_width = (self.max_act - self.min_act) / bins
+        self.bins = list(np.arange(self.min_act, self.max_act + (2 * self.bin_width), self.bin_width))
+
+        # Indices of features which are in the current range
+        self.selected_features = torch.where(self.average_activations > 0)[0]
+
+        # Number of features that are not activated at all
+        self.num_dead = self.num_features - len(self.selected_features)
+
+        # Mask of features that are not filtered
+        self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
+
+        slider = widgets.FloatRangeSlider(
+            value=[self.min_act, self.max_act],
+            min=self.min_act,
+            max=self.max_act,
+            step=self.bin_width,
+            disabled=False,
+            continuous_update=False,
+            orientation='horizontal',
+            readout=True,
+            readout_format='.2f',
+        )
+
+        super().__init__('Average activation of features', slider)
+
+    def update_plot(self, change):
+        left, right = change['new']
+        self.selected_features = torch.where(
+            (left <= self.average_activations) & (self.average_activations <= right)
+        )[0]
+
+        self.update_feature_info()
+
+        with self.output:
+            self.axes.clear()
+            _, edges, p1 = self.axes.hist(self.average_activations, bins=self.bins, color="lightgray")
+            _, _, p2 = self.axes.hist(self.average_activations * self.feature_mask, bins=self.bins, color="gray")
+
+            for i in range(len(p1)):
+                center = (edges[i] + edges[i + 1]) / 2
+                if (left < center) & (center < right):
+                    p1[i].set_facecolor('lightblue')
+                    p2[i].set_facecolor('blue')
+
+            image_data = BytesIO()
+            self.fig.savefig(image_data, format='png')
+            image_data.seek(0)
+            image = Image(image_data.read())
+            self.output.clear_output(wait=True)
+            display(image)
+
+
+class LayersActivatedGraph(GraphWidget):
     def __init__(
             self,
             feature_occurrences: torch.Tensor,

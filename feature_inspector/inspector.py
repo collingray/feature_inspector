@@ -223,6 +223,8 @@ class Inspector:
             self.num_features,
             self.num_layers,
             self.feature_occurrences,
+            torch.stack([feature.examples.activations.mean() for feature in self.feature_data]).detach().to(
+                dtype=torch.float32),
             self.possible_occurrences,
             self.display_features
         )
