@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractproperty, abstractmethod, ABCMeta
 from io import BytesIO
 from typing import Optional
@@ -8,8 +9,8 @@ import ipywidgets as widgets
 import torch
 from IPython.display import display, Image
 
-SLIDER_WIDTH = "653px"
-SLIDER_MARGINS = "0px 0px 0px 98px"
+SLIDER_WIDTH = "576px"
+SLIDER_MARGINS = "0px 0px 0px 21px"
 
 
 class GraphWidgetMeta(ABCMeta, type(widgets.VBox)):
@@ -30,7 +31,10 @@ class GraphWidget(ABC, widgets.VBox, metaclass=GraphWidgetMeta):
         self.slider = slider
         self.slider.layout.width = SLIDER_WIDTH
         self.slider.layout.margin = SLIDER_MARGINS
-        self.slider.observe(self.update_plot, 'value')
+        self.slider.observe(self.slider_changed, 'value')
+
+        self.readout = widgets.Label()
+        self.update_readout(self.slider.value[0], self.slider.value[1])
 
         self.feature_info = widgets.HBox([])
 
@@ -41,7 +45,10 @@ class GraphWidget(ABC, widgets.VBox, metaclass=GraphWidgetMeta):
             width='100%'
         )
 
-        super().__init__(children=[self.output, self.slider, self.feature_info], layout=layout)
+        super().__init__(children=[self.output, self.slider, self.readout, self.feature_info], layout=layout)
+
+    def update_readout(self, left, right):
+        self.readout.value = self.format_readout(left, right)
 
     def update_feature_info(self):
         self.feature_info.children = [
@@ -51,17 +58,29 @@ class GraphWidget(ABC, widgets.VBox, metaclass=GraphWidgetMeta):
         ]
 
     def refresh(self):
-        self.update_plot({'new': self.slider.value})
+        self.update_plot(self.slider.value[0], self.slider.value[1])
+        self.update_feature_info()
 
     # Update the feature mask to include all features that are in 'filtered_features'. If 'filtered_features' is None,
     # all features are included.
     def update_filtered_features(self, filtered_features: Optional[torch.Tensor]):
         self.feature_mask[:] = False
         self.feature_mask[filtered_features] = True
-        self.update_plot({'new': self.slider.value})
+        self.refresh()
+
+    def slider_changed(self, change):
+        left, right = change['new']
+
+        self.update_readout(left, right)
+        self.update_plot(left, right)
+        self.update_feature_info()
 
     @abstractmethod
-    def update_plot(self, change):
+    def format_readout(self, left, right):
+        pass
+
+    @abstractmethod
+    def update_plot(self, left, right):
         pass
 
 
@@ -105,19 +124,19 @@ class FeatureFrequencyGraph(GraphWidget):
             disabled=False,
             continuous_update=False,
             orientation='horizontal',
-            readout=True,
+            readout=False,
             readout_format='.2f',
         )
 
         super().__init__('Log frequency density of features', slider)
 
-    def update_plot(self, change):
-        left, right = change['new']
+    def format_readout(self, left, right):
+        return f"[{10 ** left:.2e} - {10 ** right:.2e}]"
+
+    def update_plot(self, left, right):
         self.selected_features = torch.where(
             (left <= self.log_freqs) & (self.log_freqs <= right)
         )[0]
-
-        self.update_feature_info()
 
         with self.output:
             self.axes.clear()
@@ -150,15 +169,13 @@ class AverageActivationGraph(GraphWidget):
         """
         self.num_features = average_activations.shape[0]
 
-        self.average_activations = average_activations
+        self.transformed_acts = torch.tanh(average_activations)
 
-        self.min_act = 0
-        self.max_act = average_activations.max().item()
-        self.bin_width = (self.max_act - self.min_act) / bins
-        self.bins = list(np.arange(self.min_act, self.max_act + (2 * self.bin_width), self.bin_width))
+        self.bin_width = 1 / bins
+        self.bins = list(np.arange(0, 1 + self.bin_width, self.bin_width))
 
         # Indices of features which are in the current range
-        self.selected_features = torch.where(self.average_activations > 0)[0]
+        self.selected_features = torch.where(self.transformed_acts > 0)[0]
 
         # Number of features that are not activated at all
         self.num_dead = self.num_features - len(self.selected_features)
@@ -167,31 +184,31 @@ class AverageActivationGraph(GraphWidget):
         self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
 
         slider = widgets.FloatRangeSlider(
-            value=[self.min_act, self.max_act],
-            min=self.min_act,
-            max=self.max_act,
+            value=[0, 1],
+            min=0,
+            max=1,
             step=self.bin_width,
             disabled=False,
             continuous_update=False,
             orientation='horizontal',
-            readout=True,
+            readout=False,
             readout_format='.2f',
         )
 
         super().__init__('Average activation of features', slider)
 
-    def update_plot(self, change):
-        left, right = change['new']
-        self.selected_features = torch.where(
-            (left <= self.average_activations) & (self.average_activations <= right)
-        )[0]
+    def format_readout(self, left, right):
+        return f"[{math.atanh(left):.2f} - {f'{math.atanh(right):.2f}' if right < 1 else '∞'}]"
 
-        self.update_feature_info()
+    def update_plot(self, left, right):
+        self.selected_features = torch.where(
+            (left <= self.transformed_acts) & (self.transformed_acts <= right)
+        )[0]
 
         with self.output:
             self.axes.clear()
-            _, edges, p1 = self.axes.hist(self.average_activations, bins=self.bins, color="lightgray")
-            _, _, p2 = self.axes.hist(self.average_activations * self.feature_mask, bins=self.bins, color="gray")
+            _, edges, p1 = self.axes.hist(self.transformed_acts, bins=self.bins, color="lightgray")
+            _, _, p2 = self.axes.hist(self.transformed_acts * self.feature_mask, bins=self.bins, color="gray")
 
             for i in range(len(p1)):
                 center = (edges[i] + edges[i + 1]) / 2
@@ -240,19 +257,19 @@ class LayersActivatedGraph(GraphWidget):
             disabled=False,
             continuous_update=False,
             orientation='horizontal',
-            readout=True,
+            readout=False,
             readout_format='d',
         )
 
         super().__init__('Number of layers activated by features', slider)
 
-    def update_plot(self, change):
-        left, right = change['new']
+    def format_readout(self, left, right):
+        return f"[{left} - {right - 1}]"
+
+    def update_plot(self, left, right):
         self.selected_features = torch.where(
             (left <= self.num_layers_activated) & (self.num_layers_activated < right)
         )[0]
-
-        self.update_feature_info()
 
         with self.output:
             self.axes.clear()
