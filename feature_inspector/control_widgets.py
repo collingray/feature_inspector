@@ -1,6 +1,8 @@
-from typing import List
+from typing import List, Set, Callable
 
 import ipywidgets as widgets
+
+from feature_inspector.bookmark_viewer import BookmarkViewer
 
 
 class FeatureControls(widgets.VBox):
@@ -133,8 +135,8 @@ class LayerControls(widgets.VBox):
             pass
 
 
-class GeneralControls(widgets.VBox):
-    def __init__(self):
+class GeneralControls(widgets.HBox):
+    def __init__(self, bookmarked_features: Set[int], apply_bookmarks: Callable[[List[int]], None]):
         self.examples_per_layer = widgets.IntSlider(
             value=3,
             min=1,
@@ -164,6 +166,10 @@ class GeneralControls(widgets.VBox):
             icon='check'
         )
 
+        self.bookmarked_features = bookmarked_features
+        self.bookmark_viewer = BookmarkViewer(self.bookmarked_features, apply_bookmarks)
+        self.bookmark_viewer.layout.margin = "0 0 0 auto"
+
         self.error_message = widgets.HTML(value="")
         self.error_message.layout.visibility = "hidden"
 
@@ -171,11 +177,14 @@ class GeneralControls(widgets.VBox):
         label.style.font_size = "16px"
 
         children = [
-            label,
-            self.examples_per_layer,
-            self.enable_graph_filters,
-            self.render_button,
-            self.error_message
+            widgets.VBox([
+                label,
+                self.examples_per_layer,
+                self.enable_graph_filters,
+                self.render_button,
+                self.error_message
+            ]),
+            self.bookmark_viewer
         ]
 
         super().__init__(children=children)

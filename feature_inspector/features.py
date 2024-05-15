@@ -51,7 +51,7 @@ class FeatureData:
         with open(f"{dir}/{self.num}.json", 'w') as f:
             f.write(json.dumps({
                 'num': self.num,
-                'token_counts': self.token_data
+                'token_data': self.token_data
             }))
 
         self.examples.save(dir, str(self.num))
@@ -85,4 +85,4 @@ class FeatureData:
                 'avg_activation': average_acts[i].item()
             }
 
-        self.token_data = token_data
+        self.token_data = {k: v for k, v in sorted(token_data.items(), key=lambda x: x[1]['count'], reverse=True)}

@@ -1,9 +1,10 @@
 import traceback
-from typing import Callable
+from typing import Callable, List, Union
 
 import ipywidgets as widgets
 import torch
 
+from .display_utils import display_features
 from .filter_widget import FilterWidget
 from .control_widgets import FeatureControls, LayerControls, GeneralControls
 
@@ -11,22 +12,22 @@ from .control_widgets import FeatureControls, LayerControls, GeneralControls
 class InspectorWidget(widgets.VBox):
     def __init__(
             self,
-            num_features: int,
-            num_layers: int,
-            feature_occurrences: torch.Tensor,
-            average_activations: torch.Tensor,
-            possible_occurrences: int,
-            display_fn: Callable[[list, list, int], widgets.Widget]
+            inspector,
     ):
-        self.num_features = num_features
-        self.num_layers = num_layers
-        self.display_fn = display_fn
+        self.num_features = inspector.num_features
+        self.num_layers = inspector.num_layers
+        self.inspector = inspector
 
-        self.feature_controls = FeatureControls(num_features)
-        self.layer_controls = LayerControls(num_layers)
-        self.general_controls = GeneralControls()
-        self.filter_widget = FilterWidget(feature_occurrences, average_activations, possible_occurrences)
-        self.display = self.display_fn(
+        self.feature_controls = FeatureControls(self.num_features)
+        self.layer_controls = LayerControls(self.num_layers)
+        self.general_controls = GeneralControls(inspector.bookmarked_features, self.apply_bookmarked)
+        self.filter_widget = FilterWidget(
+            inspector.feature_occurrences,
+            torch.stack([feature.examples.activations.mean() for feature in inspector.feature_data]).detach().to(
+                dtype=torch.float32),
+            inspector.possible_occurrences
+        )
+        self.display = self.display_features(
             self.feature_controls.features,
             self.layer_controls.layers,
             self.general_controls.examples_per_layer.value
@@ -63,7 +64,7 @@ class InspectorWidget(widgets.VBox):
 
         try:
             self.display.close()
-            self.display = self.display_fn(
+            self.display = self.display_features(
                 self.feature_controls.features,
                 self.layer_controls.layers,
                 self.general_controls.examples_per_layer.value
@@ -100,6 +101,31 @@ class InspectorWidget(widgets.VBox):
                 self.display,
             ]
 
+    def display_features(
+            self,
+            features: Union[int, range, list],
+            layers: Union[int, range, list],
+            examples_per_layer=3
+    ):
+        if isinstance(features, int):
+            features = [features]
+        else:
+            features = list(features)
+
+        if isinstance(layers, int):
+            layers = [layers]
+        else:
+            layers = list(layers)
+
+        features = [self.inspector.feature_data[feature] for feature in features]
+
+        return display_features(features, layers, self.inspector.sequences, self.bookmark_feature,
+                                examples_per_layer)
+
+    def bookmark_feature(self, feature: int):
+        self.inspector.bookmarked_features.add(feature)
+        self.general_controls.bookmark_viewer.update_bookmarks(list(self.inspector.bookmarked_features))
+
     def apply_filters(self):
         filtered_features = self.filter_widget.get_filtered_features()
         self.feature_controls.features = filtered_features.tolist() \
@@ -107,3 +133,8 @@ class InspectorWidget(widgets.VBox):
 
         self.feature_controls.input_radio.value = "Input"
         self.feature_controls.input_radio_changed({'new': 'Input'})  # In case it was already "Input"
+
+    def apply_bookmarked(self, selected_bookmarks: List[int]):
+        self.feature_controls.features = list(selected_bookmarks)
+        self.feature_controls.input_radio.value = "Input"
+        self.feature_controls.input_radio_changed({'new': 'Input'})

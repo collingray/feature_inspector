@@ -1,5 +1,5 @@
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Callable, Set
 
 import torch
 from ipywidgets import widgets
@@ -97,7 +97,33 @@ def display_examples(examples, seqs, examples_per_layer, context_width=50):
     return widgets.VBox(out)
 
 
-def display_feature(feature: FeatureData, layers: List[int], seqs: List[Tuple[str, List[int]]], examples_per_layer):
+def feature_controls(feature: FeatureData, bookmark_feature_fn: Callable[[int], None]):
+    bookmark_button = widgets.Button(
+        description='Bookmark',
+        disabled=False,
+        tooltip='Bookmark feature',
+        icon='star'
+    )
+
+    bookmark_button.style.button_color = 'gold'
+    bookmark_button.on_click(lambda _: bookmark_feature_fn(feature.num))
+
+    labels = [
+        widgets.Label(f"Average activation: {feature.examples.activations.mean().item():.3f}"),
+        widgets.Label(f"Unique tokens: {len(feature.token_data)}"),
+        widgets.Label(f"Top tokens: [ {' | '.join(list(feature.token_data.keys())[:10])} ]")
+    ]
+
+    for label in labels:
+        label.layout.width = "auto"
+
+    return widgets.HBox(
+        [bookmark_button] + labels
+    )
+
+
+def display_feature(feature: FeatureData, layers: List[int], seqs: List[Tuple[str, List[int]]],
+                    bookmark_feature_fn: Callable[[int], None], examples_per_layer):
     children = [
         display_examples(feature.examples.get_layer(layer), seqs, examples_per_layer)
         for layer in layers
@@ -105,19 +131,28 @@ def display_feature(feature: FeatureData, layers: List[int], seqs: List[Tuple[st
     accordion = widgets.Accordion(children=children, selected_index=0)
 
     for i in layers:
-        accordion.set_title(i, f"Layer {i}")
+        average_activation = feature.examples.get_layer(i)[1].mean().item()
+        accordion.set_title(i, f"Layer {i} - (avg act: {average_activation:.3f})")
 
-    return accordion
+    return widgets.VBox([
+        feature_controls(feature, bookmark_feature_fn),
+        accordion
+    ])
 
 
-def display_features(features: List[FeatureData], layers: List[int], seqs: List[Tuple[str, List[int]]],
-                     examples_per_layer=3):
+def display_features(
+        features: List[FeatureData],
+        layers: List[int],
+        seqs: List[Tuple[str, List[int]]],
+        bookmark_feature_fn: Callable[[int], None],
+        examples_per_layer=3
+):
     if len(features) > 20:
         sections = min(10, len(features) // 10)
         section_width = math.ceil(len(features) / sections)
 
         children = [
-            display_features(features[i:i + section_width], layers, seqs, examples_per_layer)
+            display_features(features[i:i + section_width], layers, seqs, bookmark_feature_fn, examples_per_layer)
             for i in range(0, len(features), section_width)
         ]
 
@@ -131,7 +166,7 @@ def display_features(features: List[FeatureData], layers: List[int], seqs: List[
 
     else:
         children = [
-            display_feature(feature, layers, seqs, examples_per_layer)
+            display_feature(feature, layers, seqs, bookmark_feature_fn, examples_per_layer)
             for feature in features
         ]
 

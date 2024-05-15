@@ -1,7 +1,7 @@
 import json
 import os
 from multiprocessing import Pool
-from typing import List, Union, Iterator, Tuple, Callable, Optional
+from typing import List, Union, Iterator, Tuple, Callable, Optional, Set
 
 import torch
 from tqdm.auto import tqdm
@@ -19,6 +19,7 @@ class Inspector:
             feature_occurrences: torch.Tensor,
             possible_occurrences: int,
             sequences: List[Tuple[str, List[int]]],
+            bookmarked_features: Set[int],
             num_features: int,
             num_layers: int
     ):
@@ -26,6 +27,7 @@ class Inspector:
         self.feature_occurrences = feature_occurrences
         self.possible_occurrences = possible_occurrences
         self.sequences = sequences
+        self.bookmarked_features = bookmarked_features
         self.num_features = num_features
         self.num_layers = num_layers
 
@@ -122,7 +124,7 @@ class Inspector:
         ]
         feature_occurrences = torch.zeros(num_layers, num_features, dtype=torch.int, device=device)
 
-        self = cls(features, feature_occurrences, 0, [], num_features, num_layers)
+        self = cls(features, feature_occurrences, 0, [], set(), num_features, num_layers)
 
         feature_mask = torch.ones(num_layers, num_features, dtype=torch.bool, device=device)
 
@@ -198,35 +200,9 @@ class Inspector:
 
         return seq, token_breaks
 
-    def display_features(
-            self,
-            features: Union[int, range, list],
-            layers: Union[int, range, list],
-            examples_per_layer=3
-    ):
-        if isinstance(features, int):
-            features = [features]
-        else:
-            features = list(features)
-
-        if isinstance(layers, int):
-            layers = [layers]
-        else:
-            layers = list(layers)
-
-        features = [self.feature_data[feature] for feature in features]
-
-        return display_features(features, layers, self.sequences, examples_per_layer)
-
     def display(self):
         return InspectorWidget(
-            self.num_features,
-            self.num_layers,
-            self.feature_occurrences,
-            torch.stack([feature.examples.activations.mean() for feature in self.feature_data]).detach().to(
-                dtype=torch.float32),
-            self.possible_occurrences,
-            self.display_features
+            inspector=self,
         )
 
     def save(self, path, name):
@@ -240,6 +216,7 @@ class Inspector:
                 "feature_occurrences": self.feature_occurrences.tolist(),
                 "possible_occurrences": self.possible_occurrences,
                 "sequences": self.sequences,
+                "bookmarked_features": self.bookmarked_features,
                 "num_features": self.num_features,
                 "num_layers": self.num_layers,
             }
@@ -266,6 +243,7 @@ class Inspector:
         feature_occurrences = torch.tensor(cfg_dict["feature_occurrences"])
         possible_occurrences = cfg_dict["possible_occurrences"]
         sequences = cfg_dict["sequences"]
+        bookmarked_features = [] # cfg_dict["bookmarked_features"]
         num_features = cfg_dict["num_features"]
         num_layers = cfg_dict["num_layers"]
 
@@ -276,4 +254,5 @@ class Inspector:
             except FileNotFoundError:
                 feature_data.append(FeatureData.empty(i, device=device, dtype=dtype))
 
-        return cls(feature_data, feature_occurrences, possible_occurrences, sequences, num_features, num_layers)
+        return cls(feature_data, feature_occurrences, possible_occurrences, sequences, set(bookmarked_features),
+                   num_features, num_layers)
