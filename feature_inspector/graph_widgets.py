@@ -208,7 +208,7 @@ class AverageActivationGraph(GraphWidget):
         with self.output:
             self.axes.clear()
             _, edges, p1 = self.axes.hist(self.transformed_acts, bins=self.bins, color="lightgray")
-            _, _, p2 = self.axes.hist(self.transformed_acts * self.feature_mask, bins=self.bins, color="gray")
+            _, _, p2 = self.axes.hist(self.transformed_acts[self.feature_mask], bins=self.bins, color="gray")
 
             for i in range(len(p1)):
                 center = (edges[i] + edges[i + 1]) / 2
