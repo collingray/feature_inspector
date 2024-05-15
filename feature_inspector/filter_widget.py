@@ -16,88 +16,53 @@ class FilterWidget(widgets.VBox):
             possible_occurrences: int,
     ):
         self.filter_controls = FilterControls()
-        self.frequency_graph = FeatureFrequencyGraph(feature_occurrences, possible_occurrences)
-        self.activation_graph = AverageActivationGraph(average_activations)
-        self.layers_graph = LayersActivatedGraph(feature_occurrences)
 
-        self.frequency_graph.layout.padding = "10px"
-        self.activation_graph.layout.padding = "10px"
-        self.layers_graph.layout.padding = "10px"
-
-        self.filter_controls.enable_frequency_filter.observe(
-            lambda _: (self.redraw_graphs(), self.set_frequency_filter()),
-            'value'
-        )
-        self.filter_controls.enable_activation_filter.observe(
-            lambda _: (self.redraw_graphs(), self.set_activation_filter()),
-            'value'
-        )
-        self.filter_controls.enable_layers_filter.observe(
-            lambda _: (self.redraw_graphs(), self.set_layers_filter()),
-            'value'
+        self.graph_filters = (
+            FeatureFrequencyGraph(feature_occurrences, possible_occurrences),
+            AverageActivationGraph(average_activations),
+            LayersActivatedGraph(feature_occurrences)
         )
 
-        self.frequency_graph.slider.observe(lambda _: self.set_frequency_filter(), 'value')
-        self.activation_graph.slider.observe(lambda _: self.set_activation_filter(), 'value')
-        self.layers_graph.slider.observe(lambda _: self.set_layers_filter(), 'value')
+        self.filter_toggles = (
+            self.filter_controls.enable_frequency_filter,
+            self.filter_controls.enable_activation_filter,
+            self.filter_controls.enable_layers_filter
+        )
+
+        for i in range(len(self.graph_filters)):
+            self.graph_filters[i].layout.padding = "10px"
+            self.graph_filters[i].slider.observe(lambda _, i=i: self.set_graph_filter(i), 'value')
+            self.filter_toggles[i].observe(lambda _, i=i: (self.redraw_graphs(), self.set_graph_filter(i)), 'value')
 
         super().__init__(children=[])
 
         self.redraw_graphs()
 
-    def get_filtered_features(self) -> Optional[torch.Tensor]:
+    def get_filtered_features(self, exclude: Optional[int] = None) -> Optional[torch.Tensor]:
         """
+        Get the indices of features that are currently enabled by the filters.
+        :param exclude: An index of a filter to exclude from the calculation.
         :return: A tensor of indices of features that are currently enabled, or None if all features are enabled.
         """
-        freq_filter = self.frequency_graph.selected_features if self.filter_controls.enable_frequency_filter else None
-        activation_filter = self.activation_graph.selected_features if self.filter_controls.enable_activation_filter else None
-        layer_filter = self.layers_graph.selected_features if self.filter_controls.enable_layers_filter else None
+        filters = [graph.selected_features for i, graph in enumerate(self.graph_filters) if
+                   self.filter_toggles[i].value and i != exclude]
 
-        if freq_filter is None and activation_filter is None and layer_filter is None:
+        if len(filters) == 0:
             return None
         else:
-            return torch.tensor(reduce(np.intersect1d, [x for x in [freq_filter, activation_filter, layer_filter] if
-                                                        x is not None]))
-
-        # if (freq_filter is not None) and (layer_filter is not None):
-        #     return torch.tensor(np.intersect1d(freq_filter, layer_filter))
-        # elif freq_filter is None:
-        #     return layer_filter
-        # else:
-        #     return freq_filter
+            return torch.tensor(reduce(np.intersect1d, filters))
 
     def redraw_graphs(self):
-        self.children = [
-            graph for graph in [
-                self.filter_controls,
-                self.frequency_graph if self.filter_controls.enable_frequency_filter.value else None,
-                self.activation_graph if self.filter_controls.enable_activation_filter.value else None,
-                self.layers_graph if self.filter_controls.enable_layers_filter.value else None
-            ] if graph is not None
-        ]
+        self.children = [self.filter_controls] + [graph for i, graph in enumerate(self.graph_filters) if
+                                                  self.filter_toggles[i].value]
 
-        self.frequency_graph.refresh()
-        self.activation_graph.refresh()
-        self.layers_graph.refresh()
+        for graph in self.graph_filters:
+            graph.refresh()
 
-    def set_frequency_filter(self):
-        enabled = self.filter_controls.enable_frequency_filter.value
-        self.activation_graph.update_filtered_features(self.frequency_graph.selected_features if enabled else None)
-        self.layers_graph.update_filtered_features(self.frequency_graph.selected_features if enabled else None)
-
-        self.filter_controls.apply_button.description = f"Apply {self.get_filtered_features().size(0)} features"
-
-    def set_activation_filter(self):
-        enabled = self.filter_controls.enable_activation_filter.value
-        self.frequency_graph.update_filtered_features(self.activation_graph.selected_features if enabled else None)
-        self.layers_graph.update_filtered_features(self.activation_graph.selected_features if enabled else None)
-
-        self.filter_controls.apply_button.description = f"Apply {self.get_filtered_features().size(0)} features"
-
-    def set_layers_filter(self):
-        enabled = self.filter_controls.enable_layers_filter.value
-        self.frequency_graph.update_filtered_features(self.layers_graph.selected_features if enabled else None)
-        self.activation_graph.update_filtered_features(self.layers_graph.selected_features if enabled else None)
+    def set_graph_filter(self, i):
+        for j in range(len(self.graph_filters)):
+            if j != i:
+                self.graph_filters[j].update_filtered_features(self.get_filtered_features(exclude=j))
 
         self.filter_controls.apply_button.description = f"Apply {self.get_filtered_features().size(0)} features"
 
