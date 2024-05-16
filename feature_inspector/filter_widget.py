@@ -1,16 +1,18 @@
 from functools import reduce
-from typing import Optional
+from typing import Optional, List
 
 import ipywidgets as widgets
 import torch
 import numpy as np
 
-from .graph_widgets import FeatureFrequencyGraph, LayersActivatedGraph, AverageActivationGraph
+from .features import FeatureData
+from .graph_widgets import FeatureFrequencyGraph, LayersActivatedGraph, AverageActivationGraph, UniqueTokensGraph
 
 
 class FilterWidget(widgets.VBox):
     def __init__(
             self,
+            feature_data: List[FeatureData],
             feature_occurrences: torch.Tensor,
             average_activations: torch.Tensor,
             possible_occurrences: int,
@@ -20,12 +22,14 @@ class FilterWidget(widgets.VBox):
         self.graph_filters = (
             FeatureFrequencyGraph(feature_occurrences, possible_occurrences),
             AverageActivationGraph(average_activations),
+            UniqueTokensGraph(feature_data),
             LayersActivatedGraph(feature_occurrences)
         )
 
         self.filter_toggles = (
             self.filter_controls.enable_frequency_filter,
             self.filter_controls.enable_activation_filter,
+            self.filter_controls.enable_tokens_filter,
             self.filter_controls.enable_layers_filter
         )
 
@@ -81,6 +85,12 @@ class FilterControls(widgets.HBox):
             disabled=False,
         )
 
+        self.enable_tokens_filter = widgets.Checkbox(
+            value=False,
+            description='Enable tokens filter',
+            disabled=False,
+        )
+
         self.enable_layers_filter = widgets.Checkbox(
             value=False,
             description='Enable layers filter',
@@ -93,5 +103,10 @@ class FilterControls(widgets.HBox):
         )
 
         super().__init__(
-            children=[self.enable_frequency_filter, self.enable_activation_filter, self.enable_layers_filter,
-                      self.apply_button])
+            children=[
+                self.enable_frequency_filter,
+                self.enable_activation_filter,
+                self.enable_tokens_filter,
+                self.enable_layers_filter,
+                self.apply_button
+            ])

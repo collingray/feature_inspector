@@ -1,13 +1,15 @@
 import math
 from abc import ABC, abstractproperty, abstractmethod, ABCMeta
 from io import BytesIO
-from typing import Optional
+from typing import Optional, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import ipywidgets as widgets
 import torch
 from IPython.display import display, Image
+
+from feature_inspector.features import FeatureData
 
 SLIDER_WIDTH = "576px"
 SLIDER_MARGINS = "0px 0px 0px 21px"
@@ -131,7 +133,7 @@ class FeatureFrequencyGraph(GraphWidget):
         super().__init__('Log frequency density of features', slider)
 
     def format_readout(self, left, right):
-        return f"[{10 ** left:.2e} - {10 ** right:.2e}]"
+        return f"[{10 ** left:.2e}, {10 ** right:.2e}]"
 
     def update_plot(self, left, right):
         self.selected_features = torch.where(
@@ -141,7 +143,7 @@ class FeatureFrequencyGraph(GraphWidget):
         with self.output:
             self.axes.clear()
             _, edges, p1 = self.axes.hist(self.log_freqs, bins=self.bins, color="lightgray")
-            _, _, p2 = self.axes.hist(self.log_freqs * self.feature_mask, bins=self.bins, color="gray")
+            _, _, p2 = self.axes.hist(self.log_freqs[self.feature_mask], bins=self.bins, color="gray")
 
             for i in range(len(p1)):
                 center = (edges[i] + edges[i + 1]) / 2
@@ -198,7 +200,7 @@ class AverageActivationGraph(GraphWidget):
         super().__init__('Average activation of features', slider)
 
     def format_readout(self, left, right):
-        return f"[{math.atanh(left):.2f} - {f'{math.atanh(right):.2f}' if right < 1 else '∞'}]"
+        return f"[{math.atanh(left):.2f}, {f'{math.atanh(right):.2f}]' if right < 1 else '∞)'}"
 
     def update_plot(self, left, right):
         self.selected_features = torch.where(
@@ -213,6 +215,75 @@ class AverageActivationGraph(GraphWidget):
             for i in range(len(p1)):
                 center = (edges[i] + edges[i + 1]) / 2
                 if (left < center) & (center < right):
+                    p1[i].set_facecolor('lightblue')
+                    p2[i].set_facecolor('blue')
+
+            image_data = BytesIO()
+            self.fig.savefig(image_data, format='png')
+            image_data.seek(0)
+            image = Image(image_data.read())
+            self.output.clear_output(wait=True)
+            display(image)
+
+
+class UniqueTokensGraph(GraphWidget):
+    def __init__(
+            self,
+            feature_data: List[FeatureData],
+            bins=100
+    ):
+        """
+        :param feature_data: A list of FeatureData objects.
+        :param bins: The number of bins to use in the histogram.
+        """
+        self.num_features = len(feature_data)
+        self.unique_tokens = torch.zeros(self.num_features, dtype=torch.int)
+        for feature in feature_data:
+            self.unique_tokens[feature.num] = len(feature.token_data)
+
+        self.max_tokens = max(self.unique_tokens).item()
+        self.bin_width = self.max_tokens / bins
+        self.bins = list(np.arange(0, self.max_tokens + 2, self.bin_width))
+
+        # Indices of features which are in the current range
+        self.selected_features = torch.where(self.unique_tokens > 0)[0]
+
+        # Number of features that are not activated at all
+        self.num_dead = self.num_features - len(self.selected_features)
+
+        # Mask of features that are not filtered
+        self.feature_mask = torch.ones(self.num_features, dtype=torch.bool)
+
+        slider = widgets.FloatRangeSlider(
+            value=[0, self.max_tokens],
+            min=0,
+            max=self.max_tokens,
+            step=self.bin_width,
+            disabled=False,
+            continuous_update=False,
+            orientation='horizontal',
+            readout=False,
+            readout_format='d',
+        )
+
+        super().__init__('Unique tokens in features', slider)
+
+    def format_readout(self, left, right):
+        return f"[{left}, {right - 1}]"
+
+    def update_plot(self, left, right):
+        self.selected_features = torch.where(
+            (left <= self.unique_tokens) & (self.unique_tokens < right)
+        )[0]
+
+        with self.output:
+            self.axes.clear()
+            _, edges, p1 = self.axes.hist(self.unique_tokens, bins=self.bins, color="lightgray")
+            _, _, p2 = self.axes.hist(self.unique_tokens[self.feature_mask], bins=self.bins, color="gray")
+
+            for i in range(len(p1)):
+                center = (edges[i] + edges[i + 1]) / 2
+                if (left <= center) & (center < right):
                     p1[i].set_facecolor('lightblue')
                     p2[i].set_facecolor('blue')
 
@@ -264,7 +335,7 @@ class LayersActivatedGraph(GraphWidget):
         super().__init__('Number of layers activated by features', slider)
 
     def format_readout(self, left, right):
-        return f"[{left} - {right - 1}]"
+        return f"[{left}, {right - 1}]"
 
     def update_plot(self, left, right):
         self.selected_features = torch.where(
@@ -274,7 +345,7 @@ class LayersActivatedGraph(GraphWidget):
         with self.output:
             self.axes.clear()
             _, _, p1 = self.axes.hist(self.num_layers_activated, bins=self.bins, color="lightgray")
-            _, _, p2 = self.axes.hist(self.num_layers_activated * self.feature_mask, bins=self.bins, color="gray")
+            _, _, p2 = self.axes.hist(self.num_layers_activated[self.feature_mask], bins=self.bins, color="gray")
 
             for i in range(len(p1)):
                 if left - 1 <= i < right - 1:

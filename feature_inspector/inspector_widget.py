@@ -22,6 +22,7 @@ class InspectorWidget(widgets.VBox):
         self.layer_controls = LayerControls(self.num_layers)
         self.general_controls = GeneralControls(inspector.bookmarked_features, self.apply_bookmarked)
         self.filter_widget = FilterWidget(
+            inspector.feature_data,
             inspector.feature_occurrences,
             torch.stack([feature.examples.activations.mean() for feature in inspector.feature_data]).detach().to(
                 dtype=torch.float32),
