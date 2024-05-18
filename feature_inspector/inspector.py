@@ -1,14 +1,13 @@
 import json
 import os
-from multiprocessing import Pool
-from typing import List, Union, Iterator, Tuple, Callable, Optional, Set
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Iterator, Tuple, Callable, Optional, Set
 
 import torch
 from tqdm.auto import tqdm
 from transformer_lens import HookedTransformer
 
 from .features import FeatureData
-from .display_utils import display_features
 from .inspector_widget import InspectorWidget
 
 
@@ -36,32 +35,28 @@ class Inspector:
             model: HookedTransformer,
             dataset,
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
+            batch_size: int,
             act_site: str,
             dtype: torch.dtype,
             max_seq_length,
-            min_seq_length,
             num_layers,
     ):
+        act_names = [f"blocks.{i}.{act_site}" for i in range(num_layers)]
+
         while True:
-            for i in range(len(dataset)):
-                act_names = [f"blocks.{i}.{act_site}" for i in range(num_layers)]
-
-                tokens = model.tokenizer(dataset[i], max_length=max_seq_length, return_tensors="pt")["input_ids"][0].to(
-                    'cuda')
-
-                if len(tokens) < min_seq_length:
-                    continue
+            for i in range(len(dataset) // batch_size):
+                tokens = model.tokenizer(dataset[i:i+batch_size], max_length=max_seq_length, padding=True, return_tensors="pt")["input_ids"].to('cuda')
 
                 output, cache = model.run_with_cache(tokens, names_filter=act_names)
 
                 # [num_layers, batch_dim, seq_length, n_dim]
                 mlp_outs = torch.stack([cache[act_name] for act_name in act_names])
 
-                # [seq_length, num_layers, n_dim]
-                mlp_outs = mlp_outs.squeeze(dim=1).permute(1, 0, 2).to(dtype=dtype)
+                # [batch_dim, seq_length, num_layers, n_dim]
+                mlp_outs = mlp_outs.permute(1, 2, 0, 3).to(dtype=dtype)
 
-                # [seq_length, num_layers, m_dim]
-                out = encode_fn(mlp_outs)
+                # [batch_dim, seq_length, num_layers, m_dim]
+                out = encode_fn(mlp_outs.flatten(0, 1)).view(mlp_outs.shape[:-1] + (-1,))
 
                 yield tokens, out
 
@@ -73,12 +68,12 @@ class Inspector:
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
             num_features: int,
             num_layers: int,
+            batch_size: int = 8,
             device: str = "cuda",
             dtype: torch.dtype = torch.bfloat16,
             act_site: str = "hook_mlp_out",
             num_seqs: int = 4096,
             max_seq_length: Optional[int] = None,
-            min_seq_length: int = 16,
             max_examples: int = 1024,
             activation_threshold: int = 1e-2
     ):
@@ -86,10 +81,10 @@ class Inspector:
             model,
             dataset,
             encode_fn,
+            batch_size,
             act_site,
             dtype,
             max_seq_length,
-            min_seq_length,
             num_layers
         )
 
@@ -97,6 +92,7 @@ class Inspector:
             num_features,
             num_layers,
             encoded_generator,
+            batch_size,
             model.tokenizer.decode,
             device,
             dtype,
@@ -111,6 +107,7 @@ class Inspector:
             num_features: int,
             num_layers: int,
             encoded_generator: Iterator[Tuple[torch.Tensor, torch.Tensor]],
+            batch_size: Optional[int],
             decode_tokens: Callable[[List[int]], str],
             device: str = "cuda",
             dtype=torch.bfloat16,
@@ -118,63 +115,76 @@ class Inspector:
             max_examples: int = 128,
             activation_threshold: int = 1e-2
     ):
-        features = [
+        initial_features = [
             FeatureData.empty(i, device=device, dtype=dtype)
             for i in range(num_features)
         ]
         feature_occurrences = torch.zeros(num_layers, num_features, dtype=torch.int, device=device)
 
-        self = cls(features, feature_occurrences, 0, [], set(), num_features, num_layers)
+        self = cls(initial_features, feature_occurrences, 0, [], set(), num_features, num_layers)
 
         feature_mask = torch.ones(num_layers, num_features, dtype=torch.bool, device=device)
 
-        for _ in tqdm(range(num_seqs)):
-            # [seq_length, num_layers, m_dim], [seq_length]
+        for _ in tqdm(range(num_seqs // (batch_size or 1))):
             tokens, out = encoded_generator.__next__()
+            if batch_size is None:
+                tokens = tokens.unsqueeze(0)  # [batch_size, seq_length]
+                out = out.unsqueeze(0)  # [batch_size, seq_length, num_layers, m_dim]
 
-            seq, token_breaks = self._decode_token_breaks(tokens, decode_tokens)
+            self.sequences += [self._decode_token_breaks(tokens[i], decode_tokens) for i in range(tokens.size(0))]
 
-            self.sequences.append((seq, token_breaks))
-
-            self.possible_occurrences += out.size(0) * num_layers
+            self.possible_occurrences += out.size(0) * out.size(1) * num_layers
 
             activated_features = out > activation_threshold
-            # permute to have features as the first dim, ensuring they are contiguous
-            example_act_indices = torch.stack(torch.where((activated_features * feature_mask).permute(2, 0, 1)))
+            # [4, n] - feat, batch, pos, layer - permuted to have features as the first dim, ensuring they are contiguous
+            example_act_indices = torch.stack(torch.where((activated_features * feature_mask).permute(3, 0, 1, 2)))
 
-            self.feature_occurrences += activated_features.int().sum(dim=0)
+            self.feature_occurrences += activated_features.int().sum(dim=(0, 1))
             feature_mask[:] = self.feature_occurrences < max_examples
 
             if example_act_indices.size(1) == 0:
                 continue
 
-            feature_blocks = torch.cat((
+            block_idxs = torch.cat((
                 torch.tensor([0], device=device),
-                torch.where(example_act_indices[0][1:] != example_act_indices[0][:-1])[0] + 1,
-                torch.tensor([len(example_act_indices[0])], device=device)
+                torch.where(example_act_indices[0, 1:] != example_act_indices[0, :-1])[0] + 1,
+                torch.tensor([example_act_indices.size(1)], device=device)
             ))
 
-            features = example_act_indices[0, feature_blocks[:-1]]
+            features: torch.Tensor = example_act_indices[0, block_idxs[:-1]]
+
+            blocks = []
+            for i in range(len(block_idxs) - 1):
+                # [3, block_size] - seq, pos, layer
+                block = example_act_indices[1:, block_idxs[i]:block_idxs[i + 1]]
+
+                # [4, block_size] - seq, pos, layer, token
+                block = torch.cat((
+                    block,
+                    tokens[block[0], block[1]].unsqueeze(0)
+                ))
+
+                # [block_size, 4] - seq, layer, pos, token
+                block = block[[0, 2, 1, 3]].swapdims(0, 1)
+
+                blocks.append(block)
+
+            # [example_act_indices[1:, block_idxs[i]:block_idxs[i + 1]] for i in range(len(block_idxs) - 1)]
 
             for i, feat in enumerate(features):
-                block_start = feature_blocks[i]
-                block_end = feature_blocks[i + 1]
-                feat = example_act_indices[0, block_start]
+                block = blocks[i]
+                # seq_layer_pos_token = torch.stack((  # [block_size, 4] - seq, layer, pos, token
+                #     torch.full((block.size(1),), len(self.sequences) - 1, dtype=torch.int, device=device),
+                #     block[1],
+                #     block[0],
+                #     tokens[block[0]]
+                # )).swapdims(0, 1)
+                activations = out[block[:, 0], block[:, 2], block[:, 1], feat]
 
-                block = example_act_indices[1:, block_start:block_end]  # [2, block_size] - pos, layer
-                seq_layer_pos_token = torch.stack((  # [block_size, 4] - seq, layer, pos, token
-                    torch.full((block.size(1),), len(self.sequences) - 1, dtype=torch.int, device=device),
-                    block[1],
-                    block[0],
-                    tokens[block[0]]
-                )).swapdims(0, 1)
-                activations = out[block[0], block[1], feat]
+                self.feature_data[feat].add_examples(block, activations)
 
-                self.feature_data[feat].add_examples(seq_layer_pos_token, activations)
-
-        for i in range(len(self.feature_data)):
-            self.feature_data[i].record_token_data(decode_tokens)
-            self.feature_data[i].examples.sort()
+        with ThreadPoolExecutor() as executor:
+            executor.map(lambda f: (f.record_token_data(decode_tokens), f.examples.sort()), self.feature_data)
 
         return self
 
@@ -243,7 +253,7 @@ class Inspector:
         feature_occurrences = torch.tensor(cfg_dict["feature_occurrences"])
         possible_occurrences = cfg_dict["possible_occurrences"]
         sequences = cfg_dict["sequences"]
-        bookmarked_features = [] # cfg_dict["bookmarked_features"]
+        bookmarked_features = cfg_dict["bookmarked_features"]
         num_features = cfg_dict["num_features"]
         num_layers = cfg_dict["num_layers"]
 

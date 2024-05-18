@@ -61,7 +61,7 @@ class FeatureData:
         with open(f"{dir}/${name}.json", 'r') as f:
             data = json.load(f)
             num = data['num']
-            token_data = data['token_counts']
+            token_data = data['token_data']
 
         examples = ExamplesData.load(dir, name, device=device, dtype=dtype)
 
@@ -77,6 +77,11 @@ class FeatureData:
 
     def record_token_data(self, decoder):
         tokens, counts, average_acts = self.examples.get_token_data()
+        _, indices = counts.sort(descending=True)
+        tokens = tokens[indices]
+        counts = counts[indices]
+        average_acts = average_acts[indices]
+
         token_data = {}
         for i in range(tokens.size(0)):
             token = decoder(tokens[i])
@@ -85,4 +90,4 @@ class FeatureData:
                 'avg_activation': average_acts[i].item()
             }
 
-        self.token_data = {k: v for k, v in sorted(token_data.items(), key=lambda x: x[1]['count'], reverse=True)}
+        self.token_data = token_data
