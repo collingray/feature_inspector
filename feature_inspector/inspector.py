@@ -36,16 +36,18 @@ class Inspector:
             dataset,
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
             batch_size: int,
-            act_site: str,
+            act_site: str | List[str],
+            device: str,
             dtype: torch.dtype,
             max_seq_length,
             num_layers,
     ):
-        act_names = [f"blocks.{i}.{act_site}" for i in range(num_layers)]
+        act_sites = [act_site] if isinstance(act_site, str) else act_site
+        act_names = [f'blocks.{i}.{site}' for i in range(num_layers) for site in act_sites]
 
         while True:
             for i in range(len(dataset) // batch_size):
-                tokens = model.tokenizer(dataset[i:i+batch_size], max_length=max_seq_length, padding=True, return_tensors="pt")["input_ids"].to('cuda')
+                tokens = model.tokenizer(dataset[i:i+batch_size], max_length=max_seq_length, truncation=True, padding=True, return_tensors='pt')['input_ids'].to(device)
 
                 output, cache = model.run_with_cache(tokens, names_filter=act_names)
 
@@ -69,9 +71,9 @@ class Inspector:
             num_features: int,
             num_layers: int,
             batch_size: int = 8,
-            device: str = "cuda",
+            device: str = 'cuda',
             dtype: torch.dtype = torch.bfloat16,
-            act_site: str = "hook_mlp_out",
+            act_site: str | List[str] = 'hook_mlp_out',
             num_seqs: int = 4096,
             max_seq_length: Optional[int] = None,
             max_examples: int = 1024,
@@ -83,6 +85,7 @@ class Inspector:
             encode_fn,
             batch_size,
             act_site,
+            device,
             dtype,
             max_seq_length,
             num_layers
@@ -109,7 +112,7 @@ class Inspector:
             encoded_generator: Iterator[Tuple[torch.Tensor, torch.Tensor]],
             batch_size: Optional[int],
             decode_tokens: Callable[[List[int]], str],
-            device: str = "cuda",
+            device: str = 'cuda',
             dtype=torch.bfloat16,
             num_seqs: int = 4096,
             max_examples: int = 128,
@@ -195,7 +198,7 @@ class Inspector:
 
         Needed as some tokens may not be a valid utf-8 string, so we can't just join them.
         """
-        seq = ""
+        seq = ''
         token_breaks = [0]
         token_acc = []
 
@@ -221,23 +224,23 @@ class Inspector:
         :param path: The directory to save the files to
         :param name: The name (without extension) to use for the inspector config and directory of the features
         """
-        with open(f"{path}/{name}.cfg", "w") as f:
+        with open(f'{path}/{name}.cfg', 'w') as f:
             cfg_dict = {
-                "feature_occurrences": self.feature_occurrences.tolist(),
-                "possible_occurrences": self.possible_occurrences,
-                "sequences": self.sequences,
-                "bookmarked_features": self.bookmarked_features,
-                "num_features": self.num_features,
-                "num_layers": self.num_layers,
+                'feature_occurrences': self.feature_occurrences.tolist(),
+                'possible_occurrences': self.possible_occurrences,
+                'sequences': self.sequences,
+                'bookmarked_features': self.bookmarked_features,
+                'num_features': self.num_features,
+                'num_layers': self.num_layers,
             }
 
             json.dump(cfg_dict, f)
 
         # ensure the directory exists
-        os.makedirs(f"{path}/{name}", exist_ok=True)
+        os.makedirs(f'{path}/{name}', exist_ok=True)
 
         for feature in self.feature_data:
-            feature.save(f"{path}/{name}")
+            feature.save(f'{path}/{name}')
 
     @classmethod
     def load(cls, path, name, device, dtype):
@@ -247,20 +250,20 @@ class Inspector:
         :param name: The name (without extension) of the inspector config and directory of the features
         :return: An Inspector instance
         """
-        with open(f"{path}/{name}.cfg", "r") as f:
+        with open(f'{path}/{name}.cfg', 'r') as f:
             cfg_dict = json.load(f)
 
-        feature_occurrences = torch.tensor(cfg_dict["feature_occurrences"])
-        possible_occurrences = cfg_dict["possible_occurrences"]
-        sequences = cfg_dict["sequences"]
-        bookmarked_features = cfg_dict["bookmarked_features"]
-        num_features = cfg_dict["num_features"]
-        num_layers = cfg_dict["num_layers"]
+        feature_occurrences = torch.tensor(cfg_dict['feature_occurrences'])
+        possible_occurrences = cfg_dict['possible_occurrences']
+        sequences = cfg_dict['sequences']
+        bookmarked_features = cfg_dict['bookmarked_features']
+        num_features = cfg_dict['num_features']
+        num_layers = cfg_dict['num_layers']
 
         feature_data = []
         for i in range(num_features):
             try:
-                feature_data.append(FeatureData.load(f"{path}/{name}", str(i), device=device, dtype=dtype))
+                feature_data.append(FeatureData.load(f'{path}/{name}', str(i), device=device, dtype=dtype))
             except FileNotFoundError:
                 feature_data.append(FeatureData.empty(i, device=device, dtype=dtype))
 
