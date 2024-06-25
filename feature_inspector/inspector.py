@@ -36,13 +36,12 @@ class Inspector:
             dataset,
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
             batch_size: int,
-            act_site: str | List[str],
+            act_sites: List[str],
             device: str,
             dtype: torch.dtype,
             max_seq_length,
             num_layers,
     ):
-        act_sites = [act_site] if isinstance(act_site, str) else act_site
         act_names = [f'blocks.{i}.{site}' for i in range(num_layers) for site in act_sites]
 
         while True:
@@ -65,7 +64,7 @@ class Inspector:
     @classmethod
     def tl_index_features(
             cls,
-            model: HookedTransformer,
+            model: HookedTransformer | str,
             dataset,
             encode_fn: Callable[[torch.Tensor], torch.Tensor],
             num_features: int,
@@ -77,14 +76,23 @@ class Inspector:
             num_seqs: int = 4096,
             max_seq_length: Optional[int] = None,
             max_examples: int = 1024,
-            activation_threshold: int = 1e-2
+            activation_threshold: float = 1e-2
     ):
+        act_sites = [act_site] if isinstance(act_site, str) else act_site
+
+        if isinstance(model, str):
+            model = HookedTransformer.from_pretrained_no_processing(
+                model_name=model,
+                device=device,
+                dtype=dtype
+            )
+
         encoded_generator = cls._tl_encoded_generator(
             model,
             dataset,
             encode_fn,
             batch_size,
-            act_site,
+            act_sites,
             device,
             dtype,
             max_seq_length,
@@ -93,7 +101,7 @@ class Inspector:
 
         return cls.index_features(
             num_features,
-            num_layers,
+            num_layers * len(act_sites),
             encoded_generator,
             batch_size,
             model.tokenizer.decode,
@@ -218,7 +226,7 @@ class Inspector:
             inspector=self,
         )
 
-    def save(self, path, name):
+    def save(self, name, path='.'):
         """
         Saves the inspector config to a json file, and saves all the features to individual json files
         :param path: The directory to save the files to
@@ -229,7 +237,7 @@ class Inspector:
                 'feature_occurrences': self.feature_occurrences.tolist(),
                 'possible_occurrences': self.possible_occurrences,
                 'sequences': self.sequences,
-                'bookmarked_features': self.bookmarked_features,
+                'bookmarked_features': list(self.bookmarked_features),
                 'num_features': self.num_features,
                 'num_layers': self.num_layers,
             }
@@ -243,11 +251,11 @@ class Inspector:
             feature.save(f'{path}/{name}')
 
     @classmethod
-    def load(cls, path, name, device, dtype):
+    def load(cls, name, device, dtype, path='.'):
         """
         Loads an inspector config and features from a directory
-        :param path: The directory containing the files
         :param name: The name (without extension) of the inspector config and directory of the features
+        :param path: The directory containing the files
         :return: An Inspector instance
         """
         with open(f'{path}/{name}.cfg', 'r') as f:
@@ -256,7 +264,7 @@ class Inspector:
         feature_occurrences = torch.tensor(cfg_dict['feature_occurrences'])
         possible_occurrences = cfg_dict['possible_occurrences']
         sequences = cfg_dict['sequences']
-        bookmarked_features = cfg_dict['bookmarked_features']
+        bookmarked_features = set(cfg_dict['bookmarked_features'])
         num_features = cfg_dict['num_features']
         num_layers = cfg_dict['num_layers']
 

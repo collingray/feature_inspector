@@ -77,7 +77,7 @@ class FeatureData:
 
     def record_token_data(self, decoder):
         tokens, counts, average_acts = self.examples.get_token_data()
-        _, indices = counts.sort(descending=True)
+        _, indices = counts[:, 0].sort(descending=True)
         tokens = tokens[indices]
         counts = counts[indices]
         average_acts = average_acts[indices]
